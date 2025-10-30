@@ -62,9 +62,12 @@ export default function SellItem({ categories }: SellItemPageProps) {
     const [images, setImages] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
-    const effectiveCategories: string[] = (categories && categories.length > 0)
-      ? categories.map((cat: any) => cat.name)
-      : defaultCategories;
+    const effectiveCategories: string[] = Array.from(
+      new Set([
+        ...(categories && categories.length > 0 ? categories.map((cat: any) => cat.name) : []),
+        ...defaultCategories,
+      ])
+    );
 
     const { data, setData, post, processing, errors } = useForm({
         title: '',
