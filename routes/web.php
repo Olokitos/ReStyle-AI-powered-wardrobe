@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Http\Controllers\Api\RatingController;
 
 Route::get('/', function () {
     // If user is authenticated, redirect to appropriate dashboard
@@ -75,6 +76,17 @@ Route::get('/terms-of-service', function () {
 Route::get('/privacy-policy', function () {
     return Inertia::render('privacy-policy');
 })->name('privacy-policy');
+
+Route::prefix('api')->group(function () {
+    Route::get('ratings/seller/{seller}', [RatingController::class, 'sellerRatings'])->name('api.ratings.seller');
+});
+
+Route::prefix('support')->name('support.')->group(function () {
+    Route::get('/help-center', fn () => Inertia::render('support/help-center'))->name('help-center');
+    Route::get('/safety-guidelines', fn () => Inertia::render('support/safety-guidelines'))->name('safety-guidelines');
+    Route::get('/community-guidelines', fn () => Inertia::render('support/community-guidelines'))->name('community-guidelines');
+    Route::get('/contact', fn () => Inertia::render('support/contact'))->name('contact');
+});
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
@@ -198,6 +210,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('outfits/feedback', [App\Http\Controllers\AIRecommenderController::class, 'submitFeedback'])->name('api.outfits.feedback');
         Route::get('user-preferences', [App\Http\Controllers\AIRecommenderController::class, 'getUserPreferences'])->name('api.user-preferences');
         Route::post('user-preferences', [App\Http\Controllers\AIRecommenderController::class, 'saveUserPreferences'])->name('api.user-preferences.save');
+        Route::post('ratings', [RatingController::class, 'store'])->name('api.ratings.store');
         
         // Test Dashboard API Routes
         Route::post('run-tests', [App\Http\Controllers\TestDashboardController::class, 'runTests'])->name('api.run-tests');
@@ -263,6 +276,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
     
     // Transaction admin routes
     Route::post('transactions/{transaction}/verify-payment', [App\Http\Controllers\TransactionController::class, 'verifyPayment'])->name('transactions.verify-payment');
+    Route::post('transactions/{transaction}/collect-payment', [App\Http\Controllers\TransactionController::class, 'collectPayment'])->name('transactions.collect-payment');
     Route::post('transactions/{transaction}/admin-complete', [App\Http\Controllers\TransactionController::class, 'adminComplete'])->name('transactions.admin-complete');
     Route::patch('transactions/{transaction}/update-payout-info', [App\Http\Controllers\TransactionController::class, 'updateSellerPayoutInfo'])->name('admin.transactions.update-payout-info');
     

@@ -211,6 +211,37 @@ class TransactionController extends Controller
     }
 
     /**
+     * Admin marks that the platform has collected payment (after verification)
+     */
+    public function collectPayment(Transaction $transaction)
+    {
+        if (!auth()->user()?->is_admin) {
+            abort(403);
+        }
+
+        if (!in_array($transaction->status, ['payment_verified', 'shipped', 'completed'], true)) {
+            return redirect()->back()->withErrors(['error' => 'Payment can only be marked collected after verification.']);
+        }
+
+        if ($transaction->payment_collected_by_platform) {
+            return redirect()->back()->with('success', 'Payment already marked as collected.');
+        }
+
+        $transaction->update([
+            'payment_collected_by_platform' => true,
+            'platform_payment_collected_at' => now(),
+        ]);
+
+        \Log::info('Platform payment marked collected manually', [
+            'transaction_id' => $transaction->id,
+            'admin_id' => auth()->id(),
+            'amount' => $transaction->sale_price,
+        ]);
+
+        return redirect()->back()->with('success', 'Payment marked as collected.');
+    }
+
+    /**
      * Admin manually completes transaction (for testing or dispute resolution)
      */
     public function adminComplete(Transaction $transaction)

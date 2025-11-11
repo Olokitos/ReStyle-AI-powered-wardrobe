@@ -60,16 +60,18 @@ interface EditItemPageProps {
 }
 
 const defaultCategories = [
-  'Shirt',
-  'T-shirt',
-  'Pants',
-  'Shorts',
-  'Dress',
-  'Jacket',
-  'Shoes',
-  'Hat',
-  'Accessories',
-  'Outerwear'
+    'Accessories',
+    'Activewear',
+    'Bottoms',
+    'Dresses',
+    'Hats',
+    'Jackets',
+    'Pants',
+    'Polos',
+    'Shoes',
+    'Tops',
+    'Underwear',
+    'Vintage',
 ];
 
 export default function EditItem({ product, categories }: EditItemPageProps) {
@@ -77,9 +79,10 @@ export default function EditItem({ product, categories }: EditItemPageProps) {
     const [previewUrls, setPreviewUrls] = useState<string[]>(product.images.map(img => `/storage/${img}`));
     const [existingImages, setExistingImages] = useState<string[]>(product.images);
 
-    const effectiveCategories: string[] = (categories && categories.length > 0)
-      ? categories.map((cat: any) => cat.name)
-      : defaultCategories;
+    const effectiveCategories: string[] = (categories && categories.length > 0
+        ? categories.map((cat: any) => cat.name)
+        : defaultCategories
+    ).sort((a, b) => a.localeCompare(b));
 
     const { data, setData, put, processing, errors } = useForm({
         title: product.title,
@@ -93,6 +96,33 @@ export default function EditItem({ product, categories }: EditItemPageProps) {
         images: [] as File[],
         keep_existing_images: true,
     });
+
+    const handlePriceChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = event.target.value;
+        if (raw === '') {
+            setData('price', '');
+            return;
+        }
+
+        const numeric = parseInt(raw.replace(/[^\d]/g, ''), 10);
+        if (Number.isNaN(numeric)) {
+            return;
+        }
+
+        setData('price', numeric.toString());
+    };
+
+    const handlePriceBlur = () => {
+        if (!data.price) {
+            return;
+        }
+
+        const numeric = parseInt(data.price, 10);
+        if (Number.isNaN(numeric) || numeric <= 0) {
+            setData('price', '');
+            return;
+        setData('price', numeric.toString());
+    };
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
@@ -222,7 +252,7 @@ export default function EditItem({ product, categories }: EditItemPageProps) {
                                                         <img
                                                             src={url}
                                                             alt={`Preview ${index + 1}`}
-                                                            className="w-full h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                                                            className="w-full h-32 object-contain rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
                                                         />
                                                         <button
                                                             type="button"
@@ -328,9 +358,13 @@ export default function EditItem({ product, categories }: EditItemPageProps) {
                                                 id="price"
                                                 type="number"
                                                 value={data.price}
-                                                onChange={(e) => setData('price', e.target.value)}
+                                            onChange={handlePriceChange}
+                                            onBlur={handlePriceBlur}
                                                 placeholder="0"
                                                 className="mt-1"
+                                            min={100}
+                                            step={100}
+                                            inputMode="numeric"
                                             />
                                             {errors.price && (
                                                 <p className="text-sm text-red-600 mt-1">{errors.price}</p>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,10 @@ interface Transaction {
   seller_earnings: number;
   platform_payment_reference: string;
   payment_proof_path: string;
+  shipping_proof_path?: string | null;
+  payout_proof_path?: string | null;
+  payment_collected_by_platform?: boolean;
+  status: string;
   created_at: string;
   product: {
     id: number;
@@ -65,10 +69,24 @@ export default function PendingPayments({ transactions }: PendingPaymentsProps) 
     });
   };
 
+  const { flash, errors } = usePage().props as {
+    flash?: { success?: string; error?: string };
+    errors?: Record<string, string>;
+  };
+
   const handleVerifyPayment = (transactionId: number) => {
     if (confirm('Are you sure you want to verify this payment? This will mark the payment as collected by the platform.')) {
       router.post(`/admin/transactions/${transactionId}/verify-payment`);
     }
+  };
+
+  const handleUploadPayoutProof = (transactionId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('payout_proof', file);
+
+    router.post(`/admin/transactions/${transactionId}/upload-payout-proof`, formData, {
+      forceFormData: true,
+    });
   };
 
   return (
@@ -96,6 +114,21 @@ export default function PendingPayments({ transactions }: PendingPaymentsProps) 
               </Link>
             </div>
           </div>
+
+          {(flash?.success || flash?.error || errors?.error) && (
+            <div className="mb-6 space-y-3">
+              {flash?.success && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-900/30 dark:text-emerald-200">
+                  {flash.success}
+                </div>
+              )}
+              {(flash?.error || errors?.error) && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-900/30 dark:text-red-200">
+                  {flash?.error || errors?.error}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -245,34 +278,90 @@ export default function PendingPayments({ transactions }: PendingPaymentsProps) 
                       </div>
 
                       {/* Actions */}
-                      <div className="flex items-center space-x-2">
-                        {transaction.status === 'payment_submitted' ? (
+                      <div className="flex flex-wrap items-center gap-2 justify-end sm:justify-start">
+                        {transaction.status === 'payment_submitted' && (
                           <Button
                             onClick={() => handleVerifyPayment(transaction.id)}
+                            size="sm"
                             className="bg-green-600 hover:bg-green-700 text-white"
                           >
                             <CheckCircle className="mr-2 h-4 w-4" />
                             Verify Payment
                           </Button>
-                        ) : (transaction.status === 'payment_verified' || transaction.status === 'shipped') ? (
+                        )}
+                        {(transaction.status === 'payment_verified' || transaction.status === 'shipped') && !transaction.payment_collected_by_platform && (
                           <Button
                             onClick={() => {
-                              if (confirm('Complete this transaction? This will record the commission and finalize the sale.')) {
-                                router.post(`/admin/transactions/${transaction.id}/admin-complete`);
+                              if (confirm('Mark payment as collected by the platform?')) {
+                                router.post(`/admin/transactions/${transaction.id}/collect-payment`, undefined, {
+                                  preserveScroll: true,
+                                });
                               }
                             }}
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          >
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Mark Payment Collected
+                          </Button>
+                        )}
+                        {(transaction.status === 'payment_verified' || transaction.status === 'shipped') ? (
+                          <Button
+                            onClick={() => {
+                              if (!transaction.payment_collected_by_platform) {
+                                alert('Collect the payment first before completing this transaction.');
+                                return;
+                              }
+                              if (confirm('Complete this transaction? This will record the commission and finalize the sale.')) {
+                                router.post(`/admin/transactions/${transaction.id}/admin-complete`, undefined, {
+                                  preserveScroll: true,
+                                });
+                              }
+                            }}
+                            size="sm"
                             className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={!transaction.payment_collected_by_platform}
                           >
                             <CheckCircle className="mr-2 h-4 w-4" />
                             Complete Transaction
                           </Button>
                         ) : null}
                         <Link href={`/transactions/${transaction.id}`}>
-                          <Button variant="outline">
+                          <Button variant="outline" size="sm">
                             <Eye className="mr-2 h-4 w-4" />
                             View Details
                           </Button>
                         </Link>
+                        <div className="relative">
+                          <input
+                            id={`payout-proof-${transaction.id}`}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) {
+                                handleUploadPayoutProof(transaction.id, file);
+                                event.target.value = '';
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!transaction.payment_collected_by_platform}
+                            size="sm"
+                            onClick={() => {
+                              const input = document.getElementById(`payout-proof-${transaction.id}`) as HTMLInputElement | null;
+                              input?.click();
+                            }}
+                          >
+                            Upload Payout Proof
+                          </Button>
+                          {!transaction.payment_collected_by_platform && (
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Enable after platform collects payment.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -285,6 +374,46 @@ export default function PendingPayments({ transactions }: PendingPaymentsProps) 
                           alt="Payment proof"
                           className="w-full max-w-md rounded-lg border cursor-pointer"
                           onClick={() => window.open(`/storage/${transaction.payment_proof_path}`, '_blank')}
+                        />
+                      </div>
+                    )}
+
+                    {/* Shipping Proof Preview */}
+                    {transaction.shipping_proof_path && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Shipping Proof:</p>
+                        <img
+                          src={transaction.shipping_proof_path.startsWith('/storage')
+                            ? transaction.shipping_proof_path
+                            : `/storage/${transaction.shipping_proof_path}`}
+                          alt="Shipping proof"
+                          className="w-full max-w-md rounded-lg border cursor-pointer"
+                          onClick={() => window.open(
+                            transaction.shipping_proof_path.startsWith('/storage')
+                              ? transaction.shipping_proof_path
+                              : `/storage/${transaction.shipping_proof_path}`,
+                            '_blank'
+                          )}
+                        />
+                      </div>
+                    )}
+
+                    {/* Payout Proof Preview */}
+                    {transaction.payout_proof_path && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Seller Payout Proof:</p>
+                        <img
+                          src={transaction.payout_proof_path.startsWith('/storage')
+                            ? transaction.payout_proof_path
+                            : `/storage/${transaction.payout_proof_path}`}
+                          alt="Seller payout proof"
+                          className="w-full max-w-md rounded-lg border cursor-pointer"
+                          onClick={() => window.open(
+                            transaction.payout_proof_path.startsWith('/storage')
+                              ? transaction.payout_proof_path
+                              : `/storage/${transaction.payout_proof_path}`,
+                            '_blank'
+                          )}
                         />
                       </div>
                     )}

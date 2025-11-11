@@ -20,4 +20,13 @@ export default defineConfig({
     esbuild: {
         jsx: 'automatic',
     },
+    server: {
+        host: process.env.VITE_DEV_SERVER_HOST ?? '127.0.0.1',
+        port: Number(process.env.VITE_DEV_SERVER_PORT ?? 5173),
+        strictPort: true,
+        hmr: {
+            host: process.env.VITE_DEV_SERVER_HMR_HOST ?? process.env.VITE_DEV_SERVER_HOST ?? '127.0.0.1',
+            port: Number(process.env.VITE_DEV_SERVER_HMR_PORT ?? process.env.VITE_DEV_SERVER_PORT ?? 5173),
+        },
+    },
 });

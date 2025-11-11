@@ -27,6 +27,7 @@ import {
     Search
 } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
+import { formatPrice } from '@/utils/price';
 
 interface Product {
     id: number;
@@ -59,12 +60,18 @@ interface ShopStats {
     soldValue: number;
 }
 
+interface RatingSummary {
+    average: number;
+    count: number;
+}
+
 interface Props {
     products: Product[];
     stats: ShopStats;
+    ratingSummary: RatingSummary;
 }
 
-export default function ShopProfile({ products, stats }: Props) {
+export default function ShopProfile({ products, stats, ratingSummary }: Props) {
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [searchTerm, setSearchTerm] = useState('');
@@ -103,10 +110,6 @@ export default function ShopProfile({ products, stats }: Props) {
     };
 
 
-    const formatPrice = (price: number) => {
-        return `₱${price.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    };
-
     const filteredProducts = products.filter(product =>
         product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -121,13 +124,28 @@ export default function ShopProfile({ products, stats }: Props) {
                 {/* Updated header: clean, minimalist, like wardrobe */}
                 <div className="border-b border-green-200/60 dark:border-green-800/50 bg-white/40 dark:bg-green-950/30 backdrop-blur-sm shadow-none">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="flex items-center gap-4 h-20">
-                            <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-green-400 rounded-xl flex items-center justify-center shadow-lg">
-                                <Package className="h-6 w-6 text-white" />
+                        <div className="flex flex-wrap items-center justify-between gap-4 py-4">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-green-400 rounded-xl flex items-center justify-center shadow-lg">
+                                    <Package className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-bold text-green-900 dark:text-white">My Shop Profile</h1>
+                                    <p className="text-green-800/70 dark:text-green-300/80 text-xs md:text-sm">Manage your items and track performance</p>
+                                </div>
                             </div>
-                            <div>
-                                <h1 className="text-2xl font-bold text-green-900 dark:text-white">My Shop Profile</h1>
-                                <p className="text-green-800/70 dark:text-green-300/80 text-xs md:text-sm">Manage your items and track performance</p>
+                            <div className="flex items-center gap-3 rounded-2xl bg-white/80 px-4 py-2 shadow-sm ring-1 ring-emerald-100 dark:bg-green-950/70 dark:ring-emerald-800/60">
+                                <div className="flex items-center justify-center rounded-full bg-yellow-100/80 p-2 dark:bg-yellow-500/20">
+                                    <Star className="h-5 w-5 text-yellow-500" />
+                                </div>
+                                <div className="text-sm leading-tight">
+                                    <p className="font-semibold text-green-900 dark:text-emerald-100">
+                                        {ratingSummary.average.toFixed(1)}★
+                                    </p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {ratingSummary.count} review{ratingSummary.count === 1 ? '' : 's'}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -156,13 +174,13 @@ export default function ShopProfile({ products, stats }: Props) {
                     </Card>
                     <Card className="border-green-200 dark:border-green-800 bg-white/70 dark:bg-green-950/50 shadow-none">
                       <CardContent className="py-4 text-center">
-                        <div className="text-xl font-bold text-green-600 dark:text-emerald-300">{stats.totalSold}</div>
+                        <div className="text-xl font-bold text-green-600 dark:text-emerald-300">{stats.soldItems}</div>
                         <div className="text-xs text-gray-700 dark:text-gray-200">Sold</div>
                       </CardContent>
                     </Card>
                     <Card className="border-green-200 dark:border-green-800 bg-white/70 dark:bg-green-950/50 shadow-none">
                       <CardContent className="py-4 text-center">
-                        <div className="text-xl font-bold text-green-600 dark:text-emerald-300">₱{stats.totalValue.toLocaleString()}</div>
+                        <div className="text-xl font-bold text-green-600 dark:text-emerald-300">{formatPrice(stats.totalValue)}</div>
                         <div className="text-xs text-gray-700 dark:text-gray-200">Inventory Value</div>
                       </CardContent>
                     </Card>
@@ -185,10 +203,14 @@ export default function ShopProfile({ products, stats }: Props) {
                             <span className="text-sm font-semibold text-green-800 dark:text-emerald-300 line-clamp-1">{product.title}</span>
                             <Badge className={`text-xs ml-2 border-none ${conditionColors[product.condition]}`}>{conditionLabels[product.condition]}</Badge>
                           </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-200 mb-1 line-clamp-1">{product.brand} {product.size}</div>
+                          {product.brand && (
+                            <div className="text-xs text-gray-600 dark:text-gray-200 mb-1 line-clamp-1">
+                              {product.brand}
+                            </div>
+                          )}
                           <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">{product.category?.name}</div>
                           <div className="flex justify-between items-center mt-2">
-                            <span className="text-lg font-bold text-green-600 dark:text-emerald-200">₱{product.price.toLocaleString()}</span>
+                            <span className="text-lg font-bold text-green-600 dark:text-emerald-200">{formatPrice(product.price)}</span>
                             <div className="flex gap-2">
                               <Button variant="ghost" size="icon" onClick={() => setSelectedProduct(product)} title="Edit">
                                 <Edit className="h-4 w-4 text-green-500" />

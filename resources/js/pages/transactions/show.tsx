@@ -52,6 +52,12 @@ interface Transaction {
     name: string;
   };
   shipping_proof_path?: string;
+  payment_collected_by_platform?: boolean;
+  platform_payment_collected_at?: string | null;
+  payout_proof_path?: string | null;
+  seller_paid?: boolean;
+  seller_payout_reference?: string | null;
+  seller_payout_amount?: number | null;
 }
 
 interface TransactionShowProps {
@@ -295,44 +301,92 @@ export default function TransactionShow({ transaction, canAct }: TransactionShow
                         )}
 
                         {transaction.payment_collected_by_platform && (
-                          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 space-y-2">
                             <div className="flex items-center space-x-2">
                               <CheckCircle className="h-5 w-5 text-green-600" />
                               <div>
                                 <p className="font-semibold text-green-900 dark:text-green-100">Payment Collected by Platform</p>
-                                <p className="text-sm text-green-800 dark:text-green-200">
-                                  Your payment has been verified and is being held in escrow
-                                </p>
+                                {transaction.platform_payment_collected_at && (
+                                  <p className="text-sm text-green-800 dark:text-green-200">
+                                    Collected on {formatDate(transaction.platform_payment_collected_at)}
+                                  </p>
+                                )}
                               </div>
                             </div>
+
+                            {transaction.payment_proof_path && (
+                              <div>
+                                <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Admin Payment Reference</p>
+                                <img
+                                  src={transaction.payment_proof_path.startsWith('/storage')
+                                    ? transaction.payment_proof_path
+                                    : `/storage/${transaction.payment_proof_path}`}
+                                  alt="Admin payment proof"
+                                  className="w-full max-w-sm rounded-lg border cursor-pointer"
+                                  onClick={() =>
+                                    window.open(
+                                      transaction.payment_proof_path?.startsWith('/storage')
+                                        ? transaction.payment_proof_path
+                                        : `/storage/${transaction.payment_proof_path}`,
+                                      '_blank'
+                                    )
+                                  }
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
 
                         {transaction.seller_paid && (
-                          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 space-y-2">
                             <div className="flex items-center space-x-2">
                               <Package className="h-5 w-5 text-blue-600" />
                               <div>
                                 <p className="font-semibold text-blue-900 dark:text-blue-100">Seller Payout Processed</p>
                                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                                  Payout Reference: {transaction.seller_payout_reference}
+                                  Payout Reference: {transaction.seller_payout_reference || 'Pending'}
                                 </p>
                                 <p className="text-sm text-blue-800 dark:text-blue-200">
                                   Amount: {formatPrice(transaction.seller_payout_amount || transaction.seller_earnings)}
                                 </p>
                               </div>
                             </div>
+
+                            {transaction.payout_proof_path && (
+                              <div>
+                                <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Payout Proof</p>
+                                <img
+                                  src={transaction.payout_proof_path.startsWith('/storage')
+                                    ? transaction.payout_proof_path
+                                    : `/storage/${transaction.payout_proof_path}`}
+                                  alt="Payout proof"
+                                  className="w-full max-w-sm rounded-lg border cursor-pointer"
+                                  onClick={() =>
+                                    window.open(
+                                      transaction.payout_proof_path?.startsWith('/storage')
+                                        ? transaction.payout_proof_path
+                                        : `/storage/${transaction.payout_proof_path}`,
+                                      '_blank'
+                                    )
+                                  }
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                         
-                        <div>
-                          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Payment Proof</p>
-                          <img
-                            src={`/storage/${transaction.payment_proof_path}`}
-                            alt="Payment proof"
-                            className="mt-2 w-full max-w-md rounded-lg border"
-                          />
-                        </div>
+                        {transaction.payment_proof_path && (
+                          <div>
+                            <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Buyer Payment Proof</p>
+                            <img
+                              src={transaction.payment_proof_path.startsWith('/storage')
+                                ? transaction.payment_proof_path
+                                : `/storage/${transaction.payment_proof_path}`}
+                              alt="Payment proof"
+                              className="mt-2 w-full max-w-md rounded-lg border"
+                            />
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

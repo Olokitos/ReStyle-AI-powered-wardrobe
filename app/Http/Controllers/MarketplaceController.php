@@ -131,9 +131,42 @@ class MarketplaceController extends Controller
                 ->take(4)
                 ->get();
 
+            $ratingAverage = round($product->user->receivedRatings()->avg('rating') ?? 0, 1);
+            $ratingCount = $product->user->receivedRatings()->count();
+
+            $eligibleTransactions = [];
+            if (auth()->check()) {
+                $eligibleTransactions = Transaction::with(['product', 'rating'])
+                    ->where('buyer_id', auth()->id())
+                    ->where('seller_id', $product->user_id)
+                    ->where('status', 'completed')
+                    ->whereDoesntHave('rating')
+                    ->latest('completed_at')
+                    ->get()
+                    ->map(fn ($transaction) => [
+                        'id' => $transaction->id,
+                        'label' => sprintf(
+                            '#%d · %s',
+                            $transaction->id,
+                            optional($transaction->completed_at)->diffForHumans() ?? 'recently'
+                        ),
+                        'product_title' => $transaction->product->title ?? 'Order',
+                    ])
+                    ->values()
+                    ->toArray();
+            }
+
             return Inertia::render('marketplace/show', [
                 'product' => $product,
                 'relatedProducts' => $relatedProducts,
+                'sellerRatingSummary' => [
+                    'average' => $ratingAverage,
+                    'count' => $ratingCount,
+                ],
+                'ratingContext' => [
+                    'eligibleTransactions' => $eligibleTransactions,
+                    'canRate' => !empty($eligibleTransactions),
+                ],
             ]);
         } catch (\Exception $e) {
             \Log::error('Error in marketplace show: ' . $e->getMessage());
@@ -159,10 +192,10 @@ class MarketplaceController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
-            'price' => 'required|numeric|min:1', // Price must be at least 1
+            'price' => ['required', 'integer', 'min:1'],
             'condition' => 'required|in:new,like_new,good,fair,poor',
             'size' => 'required|string|in:XS,S,M,L,XL,XXL,One Size',
             'brand' => 'nullable|string|max:100',
@@ -194,7 +227,7 @@ class MarketplaceController extends Controller
             'category_id' => $category->id,
             'title' => $request->title,
             'description' => $request->description,
-            'price' => $request->price,
+            'price' => (int) $validated['price'],
             'condition' => $request->condition,
             'size' => $request->size,
             'brand' => $request->brand,
@@ -238,10 +271,10 @@ class MarketplaceController extends Controller
         
         $product = $marketplace; // Alias for readability
 
-        $request->validate([
+        $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
-            'price' => 'required|numeric|min:1',
+            'price' => ['required', 'integer', 'min:1'],
             'condition' => 'required|in:new,like_new,good,fair,poor',
             'size' => 'required|string|in:XS,S,M,L,XL,XXL,One Size',
             'brand' => 'nullable|string|max:100',
@@ -274,7 +307,7 @@ class MarketplaceController extends Controller
         $updateData = [
             'title' => $request->title,
             'description' => $request->description,
-            'price' => $request->price,
+            'price' => (int) $validated['price'],
             'condition' => $request->condition,
             'size' => $request->size,
             'brand' => $request->brand,

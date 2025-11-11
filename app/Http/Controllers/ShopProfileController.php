@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\Rating;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -18,6 +19,10 @@ class ShopProfileController extends Controller
             ->latest()
             ->get();
 
+        $ratingQuery = Rating::where('seller_id', auth()->id());
+        $averageRating = round((clone $ratingQuery)->avg('rating') ?? 0, 1);
+        $ratingCount = (clone $ratingQuery)->count();
+
         $stats = [
             'totalItems' => $products->count(),
             'activeItems' => $products->where('status', 'active')->count(),
@@ -31,6 +36,10 @@ class ShopProfileController extends Controller
         return Inertia::render('shop-profile', [
             'products' => $products,
             'stats' => $stats,
+            'ratingSummary' => [
+                'average' => $averageRating,
+                'count' => $ratingCount,
+            ],
         ]);
     }
 

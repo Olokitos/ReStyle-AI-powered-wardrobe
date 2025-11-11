@@ -87,6 +87,14 @@ class Transaction extends Model
     }
 
     /**
+     * Rating associated with this transaction, if any.
+     */
+    public function rating()
+    {
+        return $this->hasOne(Rating::class);
+    }
+
+    /**
      * Calculate 2% commission from sale price
      */
     public function calculateCommission()

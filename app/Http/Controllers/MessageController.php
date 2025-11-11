@@ -200,13 +200,19 @@ class MessageController extends Controller
         ]);
 
         $conversation = Conversation::where(function ($query) use ($request) {
-            $query->where('user1_id', auth()->id())
-                  ->where('user2_id', $request->user_id);
-        })->orWhere(function ($query) use ($request) {
-            $query->where('user1_id', $request->user_id)
-                  ->where('user2_id', auth()->id());
-        })->when($request->product_id, function ($query) use ($request) {
-            $query->where('product_id', $request->product_id);
+            $query->where(function ($inner) use ($request) {
+                $inner->where('user1_id', auth()->id())
+                      ->where('user2_id', $request->user_id);
+            })->orWhere(function ($inner) use ($request) {
+                $inner->where('user1_id', $request->user_id)
+                      ->where('user2_id', auth()->id());
+            });
+        })->where(function ($query) use ($request) {
+            if ($request->filled('product_id')) {
+                $query->where('product_id', $request->product_id);
+            } else {
+                $query->whereNull('product_id');
+            }
         })->first();
 
         if ($conversation) {

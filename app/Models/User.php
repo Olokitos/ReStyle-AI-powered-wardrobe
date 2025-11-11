@@ -58,4 +58,20 @@ class User extends Authenticatable
     {
         return $this->is_admin;
     }
+
+    /**
+     * Ratings this user has given as a buyer.
+     */
+    public function givenRatings()
+    {
+        return $this->hasMany(Rating::class, 'buyer_id');
+    }
+
+    /**
+     * Ratings this user has received as a seller.
+     */
+    public function receivedRatings()
+    {
+        return $this->hasMany(Rating::class, 'seller_id');
+    }
 }

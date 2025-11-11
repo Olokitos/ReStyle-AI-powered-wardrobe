@@ -21,6 +21,7 @@ import {
   ShoppingBag
 } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
+import SellerRatingSection from '@/components/ratings/SellerRatingSection';
 
 interface Product {
   id: number;
@@ -46,12 +47,28 @@ interface Product {
   };
 }
 
+interface RatingSummary {
+  average: number;
+  count: number;
+}
+
+interface RatingContext {
+  canRate: boolean;
+  eligibleTransactions: Array<{
+    id: number;
+    label: string;
+    product_title: string;
+  }>;
+}
+
 interface Props {
   product: Product;
   relatedProducts: any[];
+  sellerRatingSummary: RatingSummary;
+  ratingContext: RatingContext;
 }
 
-export default function ProductShow({ product, relatedProducts }: Props) {
+export default function ProductShow({ product, relatedProducts, sellerRatingSummary, ratingContext }: Props) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isFavorited, setIsFavorited] = useState(false);
   const { auth } = usePage().props as { auth: { user: any } };
@@ -118,7 +135,7 @@ export default function ProductShow({ product, relatedProducts }: Props) {
                   <img
                     src={`/storage/${product.images[selectedImage]}`}
                     alt={product.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain bg-white dark:bg-gray-900"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
@@ -143,7 +160,7 @@ export default function ProductShow({ product, relatedProducts }: Props) {
                       <img
                         src={`/storage/${image}`}
                         alt={`${product.title} ${index + 1}`}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain bg-white dark:bg-gray-900"
                       />
                     </button>
                   ))}
@@ -176,6 +193,13 @@ export default function ProductShow({ product, relatedProducts }: Props) {
                   <div className="flex items-center">
                     <User className="h-4 w-4 mr-1" />
                     <span>by {product.user?.name || 'Unknown'}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Star className="h-4 w-4 mr-1 text-yellow-400" />
+                    <span>
+                      {sellerRatingSummary?.average?.toFixed(1) ?? '0.0'}★
+                      <span className="text-gray-400 dark:text-gray-500"> ({sellerRatingSummary?.count ?? 0})</span>
+                    </span>
                   </div>
                   <div className="flex items-center">
                     <Eye className="h-4 w-4 mr-1" />
@@ -236,6 +260,15 @@ export default function ProductShow({ product, relatedProducts }: Props) {
                   </p>
                 </CardContent>
               </Card>
+
+              <SellerRatingSection
+                sellerId={product.user?.id}
+                sellerName={product.user?.name || 'Seller'}
+                initialAverage={sellerRatingSummary?.average ?? 0}
+                initialCount={sellerRatingSummary?.count ?? 0}
+                initialCanRate={ratingContext?.canRate ?? false}
+                initialEligibleTransactions={ratingContext?.eligibleTransactions ?? []}
+              />
 
               {/* Action Buttons */}
               <div className="space-y-4">

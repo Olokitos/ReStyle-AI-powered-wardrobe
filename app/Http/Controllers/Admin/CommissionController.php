@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\CommissionRecord;
 use App\Models\Transaction;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -116,7 +117,7 @@ class CommissionController extends Controller
     }
     
     /**
-     * Export commission data to CSV
+     * Export commission data as a PDF report
      */
     public function export(Request $request)
     {
@@ -139,46 +140,34 @@ class CommissionController extends Controller
         }
         
         $commissions = $query->orderBy('collected_at', 'desc')->get();
-        
-        $filename = 'commission_report_' . now()->format('Y-m-d_H-i-s') . '.csv';
-        
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+
+        $summary = [
+            'total_amount' => $commissions->sum('amount'),
+            'total_transactions' => $commissions->count(),
+            'average_commission' => $commissions->count() > 0 ? $commissions->avg('amount') : 0,
+            'highest_commission' => $commissions->max('amount'),
         ];
-        
-        $callback = function() use ($commissions) {
-            $file = fopen('php://output', 'w');
-            
-            // CSV headers
-            fputcsv($file, [
-                'Date',
-                'Transaction ID',
-                'Seller',
-                'Product',
-                'Sale Price',
-                'Commission (2%)',
-                'Seller Earnings (98%)',
-                'Status'
-            ]);
-            
-            // CSV data
-            foreach ($commissions as $commission) {
-                fputcsv($file, [
-                    $commission->collected_at->format('Y-m-d H:i:s'),
-                    $commission->transaction->id,
-                    $commission->seller->name,
-                    $commission->transaction->product->title,
-                    $commission->transaction->sale_price,
-                    $commission->amount,
-                    $commission->transaction->seller_earnings,
-                    $commission->transaction->status
-                ]);
-            }
-            
-            fclose($file);
-        };
-        
-        return response()->stream($callback, 200, $headers);
+
+        $filters = [
+            'start_date' => $request->start_date,
+            'end_date' => $request->end_date,
+            'seller_id' => $request->seller_id,
+            'status' => $request->status,
+        ];
+
+        $pdf = Pdf::loadView('admin.commissions.report-pdf', [
+            'generatedAt' => now(),
+            'commissions' => $commissions,
+            'summary' => $summary,
+            'filters' => $filters,
+        ])->setPaper('a4', 'landscape')->setOptions([
+            'defaultFont' => 'DejaVu Sans',
+            'isHtml5ParserEnabled' => true,
+            'isRemoteEnabled' => true,
+        ]);
+
+        $filename = 'commission_report_' . now()->format('Y-m-d_H-i-s') . '.pdf';
+
+        return $pdf->download($filename);
     }
 }

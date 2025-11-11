@@ -65,24 +65,36 @@ export default function Footer() {
                         <h3 className="text-lg font-semibold text-white">Support</h3>
                         <ul className="space-y-2">
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-green-400 transition-colors text-sm">
+                                <Link
+                                    href="/support/help-center"
+                                    className="text-gray-300 hover:text-green-400 transition-colors text-sm"
+                                >
                                     Help Center
-                                </a>
+                                </Link>
                             </li>
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-green-400 transition-colors text-sm">
+                                <Link
+                                    href="/support/safety-guidelines"
+                                    className="text-gray-300 hover:text-green-400 transition-colors text-sm"
+                                >
                                     Safety Guidelines
-                                </a>
+                                </Link>
                             </li>
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-green-400 transition-colors text-sm">
+                                <Link
+                                    href="/support/community-guidelines"
+                                    className="text-gray-300 hover:text-green-400 transition-colors text-sm"
+                                >
                                     Community Guidelines
-                                </a>
+                                </Link>
                             </li>
                             <li>
-                                <a href="#" className="text-gray-300 hover:text-green-400 transition-colors text-sm">
+                                <Link
+                                    href="/support/contact"
+                                    className="text-gray-300 hover:text-green-400 transition-colors text-sm"
+                                >
                                     Contact Us
-                                </a>
+                                </Link>
                             </li>
                         </ul>
                     </div>

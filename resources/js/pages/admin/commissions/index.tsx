@@ -65,6 +65,10 @@ export default function CommissionIndex({ stats, recentTransactions, chartData }
     });
   };
 
+  const handleExportPdf = () => {
+    window.open('/admin/commissions/export', '_blank', 'noopener');
+  };
+
   return (
     <AppLayout>
       <Head title="Commission Dashboard" />
@@ -90,12 +94,10 @@ export default function CommissionIndex({ stats, recentTransactions, chartData }
                     View Report
                   </Button>
                 </Link>
-                <Link href="/admin/commissions/export">
-                  <Button className="bg-green-600 hover:bg-green-700 text-white">
-                    <Download className="mr-2 h-4 w-4" />
-                    Export Data
-                  </Button>
-                </Link>
+                <Button onClick={handleExportPdf} className="bg-green-600 hover:bg-green-700 text-white">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Data
+                </Button>
               </div>
             </div>
           </div>
@@ -188,24 +190,31 @@ export default function CommissionIndex({ stats, recentTransactions, chartData }
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-64 flex items-end justify-between space-x-1">
-                  {chartData.map((day, index) => {
-                    const maxAmount = Math.max(...chartData.map(d => d.amount));
-                    const height = (day.amount / maxAmount) * 200;
-                    
-                    return (
-                      <div key={index} className="flex flex-col items-center flex-1">
-                        <div
-                          className="bg-green-500 w-full rounded-t"
-                          style={{ height: `${height}px` }}
-                          title={`${day.date}: ${formatPrice(day.amount)}`}
-                        />
-                        <span className="text-xs text-gray-600 dark:text-gray-400 mt-2 transform -rotate-45">
-                          {day.date}
-                        </span>
-                      </div>
-                    );
-                  })}
+                <div className="h-64 overflow-x-auto px-2">
+                  <div className="flex items-end space-x-3 min-w-full">
+                    {chartData.map((day, index) => {
+                      const maxAmount = Math.max(...chartData.map(d => d.amount));
+                      const height = maxAmount > 0 ? (day.amount / maxAmount) * 200 : 4;
+                      const shouldShowLabel = index % Math.ceil(chartData.length / 8 || 1) === 0;
+                      const [dayOfMonth, month] = day.date.split(' ');
+
+                      return (
+                        <div key={index} className="flex flex-col items-center flex-1 min-w-[56px]">
+                          <div
+                            className="bg-gradient-to-t from-green-600 to-emerald-400 w-full rounded-t"
+                            style={{ height: `${height < 4 ? 4 : height}px` }}
+                            title={`${day.date}: ${formatPrice(day.amount)}`}
+                          />
+                          {shouldShowLabel && (
+                            <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 leading-tight text-center">
+                              <div>{dayOfMonth}</div>
+                              <div>{month}</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="mt-4 text-center">
                   <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -288,12 +297,14 @@ export default function CommissionIndex({ stats, recentTransactions, chartData }
                   </Button>
                 </Link>
                 
-                <Link href="/admin/commissions/export">
-                  <Button variant="outline" className="w-full h-20 flex flex-col items-center justify-center">
-                    <Download className="h-6 w-6 mb-2" />
-                    <span>Export Data</span>
-                  </Button>
-                </Link>
+                <Button
+                  onClick={handleExportPdf}
+                  variant="outline"
+                  className="w-full h-20 flex flex-col items-center justify-center"
+                >
+                  <Download className="h-6 w-6 mb-2" />
+                  <span>Export Data</span>
+                </Button>
                 
                 <Link href="/admin/dashboard">
                   <Button variant="outline" className="w-full h-20 flex flex-col items-center justify-center">

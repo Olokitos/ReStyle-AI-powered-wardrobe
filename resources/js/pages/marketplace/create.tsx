@@ -46,16 +46,18 @@ interface SellItemPageProps {
 }
 
 const defaultCategories = [
-  'T-shirt',
-  'Polo',
-  'Pants',
-  'Shorts',
-  'Dress',
-  'Jacket',
-  'Shoes',
-  'Hat',
-  'Accessories',
-  'Outerwear'
+    'Accessories',
+    'Activewear',
+    'Bottoms',
+    'Dresses',
+    'Hats',
+    'Jackets',
+    'Pants',
+    'Polos',
+    'Shoes',
+    'Tops',
+    'Underwear',
+    'Vintage',
 ];
 
 export default function SellItem({ categories }: SellItemPageProps) {
@@ -63,11 +65,11 @@ export default function SellItem({ categories }: SellItemPageProps) {
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
     const effectiveCategories: string[] = Array.from(
-      new Set([
-        ...(categories && categories.length > 0 ? categories.map((cat: any) => cat.name) : []),
-        ...defaultCategories,
-      ])
-    );
+        new Set([
+            ...(categories && categories.length > 0 ? categories.map((cat: any) => cat.name) : []),
+            ...defaultCategories,
+        ]),
+    ).sort((a, b) => a.localeCompare(b));
 
     const { data, setData, post, processing, errors } = useForm({
         title: '',
@@ -121,6 +123,33 @@ export default function SellItem({ categories }: SellItemPageProps) {
         { value: 'fair', label: 'Fair' },
         { value: 'poor', label: 'Poor' },
     ];
+
+    const handlePriceChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = event.target.value;
+        if (raw === '') {
+            setData('price', '');
+            return;
+        }
+
+        const numeric = parseInt(raw.replace(/[^\d]/g, ''), 10);
+        if (Number.isNaN(numeric)) {
+            return;
+        }
+
+        setData('price', numeric.toString());
+    };
+
+    const handlePriceBlur = () => {
+        if (!data.price) {
+            return;
+        }
+
+        const numeric = parseInt(data.price, 10);
+        if (Number.isNaN(numeric) || numeric <= 0) {
+            setData('price', '');
+            return;
+        setData('price', numeric.toString());
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -207,7 +236,7 @@ export default function SellItem({ categories }: SellItemPageProps) {
                                                         <img
                                                             src={url}
                                                             alt={`Preview ${index + 1}`}
-                                                            className="w-full h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                                                            className="w-full h-32 object-contain rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
                                                         />
                                                         <button
                                                             type="button"
@@ -273,9 +302,13 @@ export default function SellItem({ categories }: SellItemPageProps) {
                                                 id="price"
                                                 type="number"
                                                 value={data.price}
-                                                onChange={(e) => setData('price', e.target.value)}
+                                            onChange={handlePriceChange}
+                                            onBlur={handlePriceBlur}
                                                 placeholder="0"
                                                 className="mt-1"
+                                            min={100}
+                                            step={100}
+                                            inputMode="numeric"
                                             />
                                             {errors.price && (
                                                 <p className="text-sm text-red-600 mt-1">{errors.price}</p>

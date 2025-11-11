@@ -486,7 +486,7 @@ export default function MarketplaceIndex({
                                                                 <img 
                                                                     src={`/storage/${getCurrentImage(product)}`} 
                                                                     alt={product.title}
-                                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                                                    className="w-full h-full object-contain bg-white dark:bg-gray-900 transition-transform duration-200"
                                                                 />
                                                                 
                                                                 {/* Image Navigation - Only show if multiple images */}
@@ -636,9 +636,13 @@ export default function MarketplaceIndex({
                                                     <div className="p-4">
                                                         {/* Brand/Style Tag */}
                                                         <div className="flex items-center justify-between mb-2">
-                                                            <Badge variant="outline" className="text-xs">
-                                                                {product.brand || 'RESTYLE'}
-                                                            </Badge>
+                                                            <div className="min-h-[24px]">
+                                                                {product.brand && (
+                                                                    <Badge variant="outline" className="text-xs">
+                                                                        {product.brand}
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
                                                             <div className="flex items-center text-xs text-gray-500">
                                                                 <Eye className="h-3 w-3 mr-1" />
                                                                 {product.views}

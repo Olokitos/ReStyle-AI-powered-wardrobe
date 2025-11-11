@@ -2,7 +2,7 @@ import AppLayout from '@/layouts/app-layout';
 import { dashboard } from '@/routes';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthNavigation } from '@/hooks/use-auth-navigation';
 import { 
     Plus, 
@@ -262,83 +262,120 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
     }, [isAddItemOpen]);
 
     // Fetch weather data using geolocation
-    const fetchWeather = async () => {
-        setWeatherLoading(true);
-        
-        try {
-            const apiKey = import.meta.env.VITE_WEATHER_API_KEY;
-            if (!apiKey) {
-                throw new Error('Weather API key not found');
-            }
+    const locationWatchIdRef = useRef<number | null>(null);
+    const lastLocationRef = useRef<{ lat: number; lon: number; timestamp: number } | null>(null);
 
-            // Get user's current location
-            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        setLocationPermission('granted');
-                        resolve(pos);
-                    },
-                    (error) => {
-                        setLocationPermission('denied');
-                        reject(error);
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 300000 // 5 minutes
-                    }
-                );
-            });
-
-            const { latitude, longitude } = position.coords;
-            
-            // Fetch weather using coordinates
-            const response = await fetch(
-                `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric`
-            );
-            
-            if (!response.ok) {
-                throw new Error('Weather fetch failed');
+    const fetchWeather = useCallback(
+        async (
+            providedCoords?: { latitude: number; longitude: number },
+            options: { silent?: boolean } = {},
+        ) => {
+            const { silent = false } = options;
+            if (!silent) {
+                setWeatherLoading(true);
             }
             
-            const data = await response.json();
-            setWeather(data);
-            setSuccessMessage('Weather updated successfully! 🌤️');
-            setTimeout(() => setSuccessMessage(null), 3000);
-        } catch (error) {
-            console.error('Weather fetch error:', error);
-            
-            // If geolocation fails, try with a default location (Lapu-Lapu City)
             try {
                 const apiKey = import.meta.env.VITE_WEATHER_API_KEY;
-                const response = await fetch(
-                    `https://api.openweathermap.org/data/2.5/weather?q=Lapu-Lapu City,PH&appid=${apiKey}&units=metric`
-                );
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    setWeather(data);
-                    setSuccessMessage('Weather updated (using default location) 🌤️');
-                    setTimeout(() => setSuccessMessage(null), 3000);
-                } else {
-                    throw new Error('Fallback weather fetch failed');
+                if (!apiKey) {
+                    throw new Error('Weather API key not found');
                 }
-            } catch (fallbackError) {
-                console.error('Fallback weather fetch error:', fallbackError);
-                // Set dummy weather data for testing
-                setWeather({
-                    name: 'Lapu-Lapu City',
-                    main: { temp: 28, feels_like: 32, humidity: 75 },
-                    weather: [{ main: 'Clouds', description: 'overcast clouds', icon: '04d' }],
-                    wind: { speed: 8 }
-                });
-                setSuccessMessage('Using demo weather data 🌤️');
-                setTimeout(() => setSuccessMessage(null), 3000);
+
+                let coords = providedCoords;
+
+                if (!coords) {
+                    if (!navigator.geolocation) {
+                        throw new Error('Geolocation is not supported in this browser');
+                    }
+
+                    coords = await new Promise<GeolocationCoordinates>((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                                setLocationPermission('granted');
+                                resolve(pos.coords);
+                            },
+                            (error) => {
+                                setLocationPermission('denied');
+                                reject(error);
+                            },
+                            {
+                                enableHighAccuracy: true,
+                                timeout: 10000,
+                                maximumAge: 300000, // 5 minutes
+                            },
+                        );
+                    });
+                } else {
+                    setLocationPermission('granted');
+                }
+
+                const { latitude, longitude } = coords;
+
+                const response = await fetch(
+                    `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric`,
+                );
+
+                if (!response.ok) {
+                    throw new Error('Weather fetch failed');
+                }
+
+                const data = await response.json();
+                setWeather(data);
+                lastLocationRef.current = { lat: latitude, lon: longitude, timestamp: Date.now() };
+
+                if (!silent) {
+                    setSuccessMessage('Weather updated successfully! 🌤️');
+                    setTimeout(() => setSuccessMessage(null), 3000);
+                }
+            } catch (error) {
+                console.error('Weather fetch error:', error);
+
+                try {
+                    const apiKey = import.meta.env.VITE_WEATHER_API_KEY;
+                    const response = await fetch(
+                        `https://api.openweathermap.org/data/2.5/weather?q=Lapu-Lapu City,PH&appid=${apiKey}&units=metric`,
+                    );
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        setWeather(data);
+                        lastLocationRef.current = {
+                            lat: data?.coord?.lat ?? 10.3167,
+                            lon: data?.coord?.lon ?? 123.95,
+                            timestamp: Date.now(),
+                        };
+                        if (!silent) {
+                            setSuccessMessage('Weather updated (using default location) 🌤️');
+                            setTimeout(() => setSuccessMessage(null), 3000);
+                        }
+                    } else {
+                        throw new Error('Fallback weather fetch failed');
+                    }
+                } catch (fallbackError) {
+                    console.error('Fallback weather fetch error:', fallbackError);
+                    setWeather({
+                        name: 'Lapu-Lapu City',
+                        main: { temp: 28, feels_like: 32, humidity: 75 },
+                        weather: [{ main: 'Clouds', description: 'overcast clouds', icon: '04d' }],
+                        wind: { speed: 8 },
+                    });
+                    lastLocationRef.current = { lat: 10.3167, lon: 123.95, timestamp: Date.now() };
+                    if (!silent) {
+                        setSuccessMessage('Using demo weather data 🌤️');
+                        setTimeout(() => setSuccessMessage(null), 3000);
+                    }
+                }
+            } finally {
+                if (!silent) {
+                    setWeatherLoading(false);
+                }
             }
-        } finally {
-            setWeatherLoading(false);
-        }
-    };
+        },
+        [],
+    );
+
+    const MIN_DISTANCE_DELTA = 0.01; // ~1km
+    const MIN_TIME_DELTA_MS = 5 * 60 * 1000; // 5 minutes
 
     // Generate AI outfit suggestion with ML integration
     const generateAISuggestion = async () => {
@@ -478,7 +515,74 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
     // Load weather and generate suggestion on component mount
     useEffect(() => {
         fetchWeather();
-    }, []);
+    }, [fetchWeather]);
+
+    useEffect(() => {
+        if (typeof navigator !== 'undefined' && 'permissions' in navigator && (navigator.permissions as any)?.query) {
+            (navigator.permissions as any)
+                .query({ name: 'geolocation' })
+                .then((status: PermissionStatus) => {
+                    const currentState = status.state as 'granted' | 'denied' | 'prompt';
+                    setLocationPermission(currentState);
+
+                    status.onchange = () => {
+                        const nextState = status.state as 'granted' | 'denied' | 'prompt';
+                        setLocationPermission(nextState);
+                    };
+                })
+                .catch(() => {
+                    setLocationPermission('unknown');
+                });
+        }
+    }, [fetchWeather]);
+
+    useEffect(() => {
+        if (locationPermission !== 'granted') {
+            if (locationWatchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(locationWatchIdRef.current);
+                locationWatchIdRef.current = null;
+            }
+            return;
+        }
+
+        if (!navigator.geolocation) {
+            return;
+        }
+
+        if (locationWatchIdRef.current !== null) {
+            return;
+        }
+
+        locationWatchIdRef.current = navigator.geolocation.watchPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                const last = lastLocationRef.current;
+                const hasMovedFar =
+                    !last ||
+                    Math.abs(latitude - last.lat) + Math.abs(longitude - last.lon) > MIN_DISTANCE_DELTA ||
+                    Date.now() - last.timestamp > MIN_TIME_DELTA_MS;
+
+                if (hasMovedFar) {
+                    fetchWeather({ latitude, longitude }, { silent: true });
+                }
+            },
+            (error) => {
+                console.error('Location watch error:', error);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 60000,
+            },
+        );
+
+        return () => {
+            if (locationWatchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(locationWatchIdRef.current);
+                locationWatchIdRef.current = null;
+            }
+        };
+    }, [locationPermission, fetchWeather]);
 
     useEffect(() => {
         if (weather && wardrobeItems.length > 0) {
