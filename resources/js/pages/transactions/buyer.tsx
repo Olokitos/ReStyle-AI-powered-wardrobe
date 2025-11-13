@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   ShoppingBag, 
   Eye, 
@@ -15,7 +16,8 @@ import {
   Truck,
   AlertCircle,
   Search,
-  Filter
+  Filter,
+  Download
 } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 
@@ -49,6 +51,8 @@ interface BuyerTransactionsProps {
 export default function BuyerTransactions({ transactions }: BuyerTransactionsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -179,39 +183,103 @@ export default function BuyerTransactions({ transactions }: BuyerTransactionsPro
                   Track your purchase history and transaction status
                 </p>
               </div>
+              <div>
+                <Button
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (statusFilter !== 'all') {
+                      params.append('status', statusFilter);
+                    }
+                    if (startDate) {
+                      params.append('start_date', startDate);
+                    }
+                    if (endDate) {
+                      params.append('end_date', endDate);
+                    }
+                    const queryString = params.toString();
+                    window.open(`/transactions/buyer/export${queryString ? '?' + queryString : ''}`, '_blank');
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Generate Report
+                </Button>
+              </div>
             </div>
           </div>
 
           {/* Filters */}
           <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search by product or seller..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search by product or seller..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="sm:w-48">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="pending_payment">Pending Payment</option>
+                      <option value="payment_submitted">Payment Submitted</option>
+                      <option value="payment_verified">Payment Verified</option>
+                      <option value="shipped">Shipped</option>
+                      <option value="delivered">Delivered</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
                   </div>
                 </div>
-                <div className="sm:w-48">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="pending_payment">Pending Payment</option>
-                    <option value="payment_submitted">Payment Submitted</option>
-                    <option value="payment_verified">Payment Verified</option>
-                    <option value="shipped">Shipped</option>
-                    <option value="delivered">Delivered</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="sm:w-48">
+                    <Label htmlFor="start_date" className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">
+                      Start Date
+                    </Label>
+                    <Input
+                      id="start_date"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="sm:w-48">
+                    <Label htmlFor="end_date" className="text-sm text-gray-600 dark:text-gray-400 mb-1 block">
+                      End Date
+                    </Label>
+                    <Input
+                      id="end_date"
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  {(startDate || endDate) && (
+                    <div className="flex items-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setStartDate('');
+                          setEndDate('');
+                        }}
+                      >
+                        Clear Dates
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

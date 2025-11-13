@@ -12,7 +12,6 @@ import {
     Package,
     TrendingUp,
     Users,
-    DollarSign,
     Star,
     Heart,
     Share2,

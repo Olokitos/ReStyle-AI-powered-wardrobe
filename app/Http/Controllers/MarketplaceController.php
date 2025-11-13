@@ -58,6 +58,34 @@ class MarketplaceController extends Controller
             $query->where('color', 'like', '%' . $request->color . '%');
         }
 
+        if ($request->boolean('featured')) {
+            $query->where('is_featured', true);
+        }
+
+        if ($request->boolean('new')) {
+            $query->where('created_at', '>=', now()->subDays(14));
+        }
+
+        $favoriteProductIds = [];
+
+        if ($request->user()) {
+            $favoriteProductIds = $request->user()
+                ->favoriteProducts()
+                ->pluck('products.id')
+                ->toArray();
+
+            if ($request->boolean('favorites')) {
+                if (!empty($favoriteProductIds)) {
+                    $query->whereIn('id', $favoriteProductIds);
+                } else {
+                    // No favorites yet, return empty result set
+                    $query->whereRaw('0 = 1');
+                }
+            }
+        } elseif ($request->boolean('favorites')) {
+            $query->whereRaw('0 = 1');
+        }
+
         // Handle sorting
         if ($request->filled('sort')) {
             switch ($request->sort) {
@@ -79,7 +107,12 @@ class MarketplaceController extends Controller
         }
 
         $products = $query->paginate(12);
-        $categories = Category::where('is_active', true)->get();
+        $categories = Category::where(function ($query) {
+                $query->where('is_active', true)
+                    ->orWhereNull('is_active');
+            })
+            ->orderBy('name')
+            ->get();
         $featuredProducts = Product::with(['user', 'category'])
             ->active()
             ->featured()
@@ -87,11 +120,26 @@ class MarketplaceController extends Controller
             ->take(6)
             ->get();
 
+        $filters = $request->only([
+            'category',
+            'search',
+            'min_price',
+            'max_price',
+            'condition',
+            'size',
+            'color',
+            'sort',
+        ]);
+        $filters['favorites'] = $request->boolean('favorites') ? '1' : null;
+        $filters['featured'] = $request->boolean('featured') ? '1' : null;
+        $filters['new'] = $request->boolean('new') ? '1' : null;
+
         return Inertia::render('marketplace/index', [
             'products' => $products,
             'categories' => $categories,
             'featuredProducts' => $featuredProducts,
-            'filters' => $request->only(['category', 'search', 'min_price', 'max_price', 'condition', 'size', 'color', 'sort']),
+            'filters' => $filters,
+            'favoriteProductIds' => $favoriteProductIds,
         ]);
     }
 
@@ -180,7 +228,12 @@ class MarketplaceController extends Controller
      */
     public function create()
     {
-        $categories = Category::where('is_active', true)->get();
+        $categories = Category::where(function ($query) {
+                $query->where('is_active', true)
+                    ->orWhereNull('is_active');
+            })
+            ->orderBy('name')
+            ->get();
         
         return Inertia::render('marketplace/create', [
             'categories' => $categories,
@@ -197,7 +250,7 @@ class MarketplaceController extends Controller
             'description' => 'required|string',
             'price' => ['required', 'integer', 'min:1'],
             'condition' => 'required|in:new,like_new,good,fair,poor',
-            'size' => 'required|string|in:XS,S,M,L,XL,XXL,One Size',
+            'size' => 'required|string|max:20',
             'brand' => 'nullable|string|max:100',
             'color' => 'nullable|string|max:50',
             'category' => 'required|string|max:100', // Accept category name
@@ -251,7 +304,12 @@ class MarketplaceController extends Controller
         }
         
         $product = $marketplace; // Alias for readability
-        $categories = Category::where('is_active', true)->get();
+        $categories = Category::where(function ($query) {
+                $query->where('is_active', true)
+                    ->orWhereNull('is_active');
+            })
+            ->orderBy('name')
+            ->get();
         
         return Inertia::render('marketplace/edit', [
             'product' => $product,
@@ -276,7 +334,7 @@ class MarketplaceController extends Controller
             'description' => 'required|string',
             'price' => ['required', 'integer', 'min:1'],
             'condition' => 'required|in:new,like_new,good,fair,poor',
-            'size' => 'required|string|in:XS,S,M,L,XL,XXL,One Size',
+            'size' => 'required|string|max:20',
             'brand' => 'nullable|string|max:100',
             'color' => 'nullable|string|max:50',
             'category' => 'required|string|max:100',

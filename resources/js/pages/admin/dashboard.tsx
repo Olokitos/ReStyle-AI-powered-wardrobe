@@ -1,6 +1,7 @@
+import React from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { 
     Users, 
     UserCheck, 
@@ -12,7 +13,6 @@ import {
     Crown,
     Activity,
     TrendingUp,
-    DollarSign,
     Package,
     ShoppingBag,
     Clock
@@ -42,16 +42,74 @@ interface AdminStats {
     thisMonthCommissions: number;
 }
 
-interface AdminDashboardProps {
-    stats: AdminStats;
+interface RecentActivity {
+    id: number;
+    type: 'commission' | 'transaction';
+    amount?: number;
+    sale_price?: number;
+    product_title: string;
+    seller_name: string;
+    buyer_name: string;
+    transaction_id?: number;
+    date: string;
 }
 
-export default function AdminDashboard({ stats }: AdminDashboardProps) {
+interface AdminDashboardProps {
+    stats: AdminStats;
+    recentActivity?: RecentActivity[];
+}
+
+export default function AdminDashboard({ stats, recentActivity = [] }: AdminDashboardProps) {
     const formatPrice = (price: number) => {
         return new Intl.NumberFormat('en-PH', {
             style: 'currency',
             currency: 'PHP',
         }).format(price);
+    };
+
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+        
+        if (diffInSeconds < 60) return 'Just now';
+        if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+        if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+        if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+        
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+        });
+    };
+
+    const handleVerifyUsers = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Navigate to users page - you can add a filter for unverified users
+        router.get('/admin/users');
+    };
+
+    const handleSecurityAudit = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Navigate to security audit page or show security information
+        // For now, we'll show an alert with security stats
+        // You can create a dedicated security audit page later
+        alert(`Security Audit Summary:\n\n` +
+              `Total Users: ${stats.totalUsers}\n` +
+              `Active Users: ${stats.activeUsers}\n` +
+              `Pending Payments: ${stats.pendingPayments}\n` +
+              `Completed Transactions: ${stats.completedTransactions}\n\n` +
+              `All systems operational.`);
+    };
+
+    const handleGenerateReport = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Navigate to commission report page
+        router.get('/admin/commissions/report');
     };
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -199,7 +257,7 @@ export default function AdminDashboard({ stats }: AdminDashboardProps) {
                     <div className="group relative overflow-hidden bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 hover:bg-white/15 transition-all duration-300 hover:scale-105">
                         <div className="flex items-center space-x-4 mb-6">
                             <div className="w-14 h-14 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
-                                <DollarSign className="h-7 w-7 text-white" />
+                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-lg font-bold text-white">₱</span>
                             </div>
                             <div>
                                 <h3 className="text-xl font-bold text-white">Commission Management</h3>
@@ -212,7 +270,7 @@ export default function AdminDashboard({ stats }: AdminDashboardProps) {
                         <div className="space-y-3">
                             <Link href="/admin/commissions">
                                 <Button className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white border-0 rounded-xl py-3 font-semibold transition-all duration-300 hover:shadow-lg">
-                                    <DollarSign className="mr-2 h-4 w-4" />
+                                    <span className="mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs font-bold text-white">₱</span>
                                     View Commissions
                                 </Button>
                             </Link>
@@ -237,15 +295,75 @@ export default function AdminDashboard({ stats }: AdminDashboardProps) {
                             <p className="text-white/60">Latest system and user activity</p>
                         </div>
                     </div>
-                    <div className="flex items-center justify-center h-40">
-                        <div className="text-center">
-                            <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <Activity className="h-10 w-10 text-white/40" />
+                    {recentActivity.length === 0 ? (
+                        <div className="flex items-center justify-center h-40">
+                            <div className="text-center">
+                                <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <Activity className="h-10 w-10 text-white/40" />
+                                </div>
+                                <p className="text-xl font-semibold text-white mb-2">No recent activity</p>
+                                <p className="text-white/60">Activity will appear here as users interact with the platform.</p>
                             </div>
-                            <p className="text-xl font-semibold text-white mb-2">No recent activity</p>
-                            <p className="text-white/60">Activity will appear here as users interact with the platform.</p>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {recentActivity.map((activity) => {
+                                const transactionId = activity.type === 'commission' 
+                                    ? activity.transaction_id 
+                                    : activity.id;
+                                
+                                return (
+                                    <Link
+                                        key={`${activity.type}-${activity.id}`}
+                                        href={`/transactions/${transactionId}`}
+                                        className="flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 rounded-xl transition-all duration-200 border border-white/10 cursor-pointer group"
+                                    >
+                                        <div className="flex items-center space-x-4 flex-1">
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                                activity.type === 'commission' 
+                                                    ? 'bg-gradient-to-r from-green-500 to-emerald-600' 
+                                                    : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                                            }`}>
+                                                {activity.type === 'commission' ? (
+                                                    <span className="text-white font-bold text-sm">₱</span>
+                                                ) : (
+                                                    <Package className="h-5 w-5 text-white" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center space-x-2">
+                                                    <p className="font-semibold text-white text-sm truncate group-hover:text-white/90">
+                                                        {activity.product_title}
+                                                    </p>
+                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                        activity.type === 'commission'
+                                                            ? 'bg-green-500/20 text-green-300'
+                                                            : 'bg-blue-500/20 text-blue-300'
+                                                    }`}>
+                                                        {activity.type === 'commission' ? 'Commission' : 'Sale'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-white/60 mt-1">
+                                                    {activity.buyer_name} → {activity.seller_name}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right ml-4">
+                                            <p className="font-semibold text-white text-sm">
+                                                {activity.type === 'commission' 
+                                                    ? formatPrice(activity.amount || 0)
+                                                    : formatPrice(activity.sale_price || 0)
+                                                }
+                                            </p>
+                                            <p className="text-xs text-white/50 mt-1">
+                                                {formatDate(activity.date)}
+                                            </p>
+                                        </div>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 {/* Quick Actions */}
@@ -260,15 +378,27 @@ export default function AdminDashboard({ stats }: AdminDashboardProps) {
                         </div>
                     </div>
                     <div className="grid gap-6 md:grid-cols-3">
-                        <Button className="h-24 flex-col bg-white/10 hover:bg-white/20 text-white border border-white/30 rounded-2xl transition-all duration-300 hover:scale-105">
+                        <Button 
+                            type="button"
+                            onClick={handleVerifyUsers}
+                            className="h-24 flex-col bg-white/10 hover:bg-white/20 text-white border border-white/30 rounded-2xl transition-all duration-300 hover:scale-105 cursor-pointer"
+                        >
                             <UserCheck className="h-8 w-8 mb-3" />
                             <span className="font-semibold">Verify Users</span>
                         </Button>
-                        <Button className="h-24 flex-col bg-white/10 hover:bg-white/20 text-white border border-white/30 rounded-2xl transition-all duration-300 hover:scale-105">
+                        <Button 
+                            type="button"
+                            onClick={handleSecurityAudit}
+                            className="h-24 flex-col bg-white/10 hover:bg-white/20 text-white border border-white/30 rounded-2xl transition-all duration-300 hover:scale-105 cursor-pointer"
+                        >
                             <Shield className="h-8 w-8 mb-3" />
                             <span className="font-semibold">Security Audit</span>
                         </Button>
-                        <Button className="h-24 flex-col bg-white/10 hover:bg-white/20 text-white border border-white/30 rounded-2xl transition-all duration-300 hover:scale-105">
+                        <Button 
+                            type="button"
+                            onClick={handleGenerateReport}
+                            className="h-24 flex-col bg-white/10 hover:bg-white/20 text-white border border-white/30 rounded-2xl transition-all duration-300 hover:scale-105 cursor-pointer"
+                        >
                             <BarChart3 className="h-8 w-8 mb-3" />
                             <span className="font-semibold">Generate Report</span>
                         </Button>

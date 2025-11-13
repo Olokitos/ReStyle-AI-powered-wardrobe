@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\Api\RatingController;
+use App\Http\Controllers\FavoriteController;
 
 Route::get('/', function () {
     // If user is authenticated, redirect to appropriate dashboard
@@ -131,6 +132,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('dashboard');
     
     Route::resource('wardrobe', App\Http\Controllers\WardrobeController::class);
+    
+    // AI Recommendations API
+    Route::post('api/wardrobe/ai-recommendations', [App\Http\Controllers\WardrobeController::class, 'generateAIRecommendations'])
+        ->name('wardrobe.ai-recommendations');
+    
     Route::resource('marketplace', App\Http\Controllers\MarketplaceController::class)->except(['show']);
     Route::get('marketplace/{product}', [App\Http\Controllers\MarketplaceController::class, 'show'])->name('marketplace.show');
     Route::patch('marketplace/{product}/mark-sold', [App\Http\Controllers\MarketplaceController::class, 'markAsSold'])->name('marketplace.mark-sold');
@@ -149,6 +155,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('messages/{conversation}', [App\Http\Controllers\MessageController::class, 'store'])->name('messages.store');
     Route::get('messages/conversation/get', [App\Http\Controllers\MessageController::class, 'getConversation'])->name('messages.get-conversation');
     
+    // Favorites
+    Route::post('favorites', [FavoriteController::class, 'store'])->name('favorites.store');
+    Route::delete('favorites/{product}', [FavoriteController::class, 'destroy'])->name('favorites.destroy');
+
     // Transaction Routes
     // Buyer routes
     Route::post('transactions/initiate/{product}', [App\Http\Controllers\TransactionController::class, 'initiate'])->name('transactions.initiate');
@@ -156,6 +166,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('transactions/{transaction}/submit-payment', [App\Http\Controllers\TransactionController::class, 'submitPayment'])->name('transactions.submit-payment');
     Route::post('transactions/{transaction}/confirm-delivery', [App\Http\Controllers\TransactionController::class, 'confirmDelivery'])->name('transactions.confirm-delivery');
     Route::get('transactions/buyer', [App\Http\Controllers\TransactionController::class, 'buyerTransactions'])->name('transactions.buyer');
+    Route::get('transactions/buyer/export', [App\Http\Controllers\TransactionController::class, 'exportPurchaseHistory'])->name('transactions.buyer.export');
     
     // Seller routes
     Route::post('transactions/{transaction}/mark-shipped', [App\Http\Controllers\TransactionController::class, 'markShipped'])->name('transactions.mark-shipped');
@@ -254,6 +265,47 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
             ->whereYear('created_at', now()->year)
             ->sum('amount');
 
+        // Get recent activity - commissions and completed transactions
+        $recentCommissions = \App\Models\CommissionRecord::with(['transaction.product', 'transaction.buyer', 'seller'])
+            ->orderBy('collected_at', 'desc')
+            ->take(5)
+            ->get()
+            ->map(function ($commission) {
+                return [
+                    'id' => $commission->id,
+                    'type' => 'commission',
+                    'amount' => $commission->amount,
+                    'product_title' => $commission->transaction->product->title ?? 'Unknown',
+                    'seller_name' => $commission->seller->name ?? 'N/A',
+                    'buyer_name' => $commission->transaction->buyer->name ?? 'N/A',
+                    'transaction_id' => $commission->transaction_id,
+                    'date' => $commission->collected_at,
+                ];
+            });
+
+        $recentTransactions = \App\Models\Transaction::with(['product', 'buyer', 'seller'])
+            ->where('status', 'completed')
+            ->orderBy('completed_at', 'desc')
+            ->take(5)
+            ->get()
+            ->map(function ($transaction) {
+                return [
+                    'id' => $transaction->id,
+                    'type' => 'transaction',
+                    'sale_price' => $transaction->sale_price,
+                    'product_title' => $transaction->product->title ?? 'Unknown',
+                    'seller_name' => $transaction->seller->name ?? 'N/A',
+                    'buyer_name' => $transaction->buyer->name ?? 'N/A',
+                    'date' => $transaction->completed_at,
+                ];
+            });
+
+        // Combine and sort by date (most recent first)
+        $recentActivity = $recentCommissions->concat($recentTransactions)
+            ->sortByDesc('date')
+            ->take(10)
+            ->values();
+
         return Inertia::render('admin/dashboard', [
             'stats' => [
                 'totalUsers' => $totalUsers,
@@ -267,7 +319,8 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
                 'completedTransactions' => $completedTransactions,
                 'totalCommissions' => $totalCommissions,
                 'thisMonthCommissions' => $thisMonthCommissions,
-            ]
+            ],
+            'recentActivity' => $recentActivity,
         ]);
     })->name('dashboard');
     

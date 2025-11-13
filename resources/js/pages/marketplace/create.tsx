@@ -9,7 +9,7 @@ import {
     Plus,
     Minus
 } from 'lucide-react';
-import { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,7 +51,9 @@ const defaultCategories = [
     'Bottoms',
     'Dresses',
     'Hats',
+    'Jacket',
     'Jackets',
+    'Jeans',
     'Pants',
     'Polos',
     'Shoes',
@@ -115,7 +117,25 @@ export default function SellItem({ categories }: SellItemPageProps) {
         });
     };
 
-    const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'];
+    const apparelSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'];
+    const shoeSizes = ['US 5', 'US 6', 'US 7', 'US 8', 'US 9', 'US 10', 'US 11', 'US 12'];
+    const waistSizes = ['W24', 'W26', 'W28', 'W30', 'W32', 'W34', 'W36', 'W38', 'W40', 'W42'];
+    const sizeOptions = useMemo(() => {
+        const normalized = data.category?.toLowerCase();
+        if (normalized === 'shoes') {
+            return shoeSizes;
+        }
+        if (['pants', 'underwear', 'jeans', 'bottoms'].includes(normalized || '')) {
+            return waistSizes;
+        }
+        return apparelSizes;
+    }, [data.category]);
+
+    useEffect(() => {
+        if (data.size && !sizeOptions.includes(data.size)) {
+            setData('size', '');
+        }
+    }, [data.size, sizeOptions, setData]);
     const conditions = [
         { value: 'new', label: 'New' },
         { value: 'like_new', label: 'Like New' },
@@ -148,6 +168,8 @@ export default function SellItem({ categories }: SellItemPageProps) {
         if (Number.isNaN(numeric) || numeric <= 0) {
             setData('price', '');
             return;
+        }
+
         setData('price', numeric.toString());
     };
 
@@ -369,7 +391,7 @@ export default function SellItem({ categories }: SellItemPageProps) {
                                             <Label>Size *</Label>
                                             <RadioGroup value={data.size} onValueChange={(value) => setData('size', value)} className="mt-2">
                                                 <div className="grid grid-cols-4 gap-2">
-                                                    {sizes.map((size) => (
+                                                    {sizeOptions.map((size) => (
                                                         <div key={size} className="flex items-center space-x-2">
                                                             <RadioGroupItem value={size} id={`size-${size}`} />
                                                             <Label htmlFor={`size-${size}`} className="text-sm">

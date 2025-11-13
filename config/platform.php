@@ -13,14 +13,14 @@ return [
     'payment' => [
         // Platform GCash details for payment collection
         'gcash' => [
-            'number' => env('PLATFORM_GCASH_NUMBER', '09123456789'),
+            'number' => env('PLATFORM_GCASH_NUMBER', '09761083939'),
             'name' => env('PLATFORM_GCASH_NAME', 'Restyle Platform'),
         ],
 
         // Platform bank account details
         'bank_account' => [
-            'bank_name' => env('PLATFORM_BANK_NAME', 'BPI'),
-            'account_number' => env('PLATFORM_BANK_ACCOUNT', '1234567890'),
+            'bank_name' => env('PLATFORM_BANK_NAME', 'RCBC'),
+            'account_number' => env('PLATFORM_BANK_ACCOUNT', '53543 9962 4782 4240'),
             'account_name' => env('PLATFORM_BANK_ACCOUNT_NAME', 'Restyle Platform'),
         ],
 

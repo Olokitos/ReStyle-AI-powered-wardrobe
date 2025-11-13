@@ -202,6 +202,7 @@
                     <th>Date</th>
                     <th>Transaction</th>
                     <th>Seller</th>
+                    <th>Buyer</th>
                     <th>Product</th>
                     <th>Sale Price</th>
                     <th>Commission</th>
@@ -216,10 +217,11 @@
                         <td>{{ optional($commission->collected_at)->format('M d, Y g:i A') }}</td>
                         <td>#{{ $commission->transaction->id }}</td>
                         <td>{{ $commission->seller->name ?? 'N/A' }}</td>
+                        <td>{{ $commission->transaction->buyer->name ?? 'N/A' }}</td>
                         <td>{{ $commission->transaction->product->title ?? 'Unknown' }}</td>
-                        <td>₱{{ number_format($commission->transaction->sale_price, 2) }}</td>
-                        <td>₱{{ number_format($commission->amount, 2) }}</td>
-                        <td>₱{{ number_format($commission->transaction->seller_earnings, 2) }}</td>
+                        <td>{{ number_format($commission->transaction->sale_price, 2) }}</td>
+                        <td>{{ number_format($commission->amount, 2) }}</td>
+                        <td>{{ number_format($commission->transaction->seller_earnings, 2) }}</td>
                         <td>
                             <span class="status">{{ str_replace('_', ' ', strtolower($commission->transaction->status)) }}</span>
                         </td>

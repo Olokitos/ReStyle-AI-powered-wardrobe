@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import { type BreadcrumbItem, type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Menu, Shirt, Store, Crown, User, MessageCircle, ShoppingBag, DollarSign, Clock, Users } from 'lucide-react';
+import { BookOpen, Folder, LayoutGrid, Menu, Shirt, Store, Crown, User, MessageCircle, ShoppingBag, PhilippinePeso, Clock, Users } from 'lucide-react';
 import AppLogo from './app-logo';
 import AppLogoIcon from './app-logo-icon';
 
@@ -48,7 +48,7 @@ const getMainNavItems = (isAdmin: boolean): NavItem[] => [
 const rightNavItems: NavItem[] = [
   { title: 'Marketplace', href: '/marketplace', icon: Store },
   { title: 'My Purchases', href: '/transactions/buyer', icon: ShoppingBag },
-  { title: 'My Sales', href: '/transactions/seller', icon: DollarSign },
+  { title: 'My Sales', href: '/transactions/seller', icon: PhilippinePeso },
   { title: 'Wardrobe', href: '/wardrobe', icon: Shirt },
   { title: 'Shop Profile', href: '/shop-profile', icon: User },
   { title: 'Chat', href: '/messages', icon: MessageCircle },
@@ -73,7 +73,7 @@ const adminNavItems: NavItem[] = [
     {
         title: 'Commissions',
         href: '/admin/commissions',
-        icon: DollarSign,
+        icon: PhilippinePeso,
     },
     {
         title: 'Messages',

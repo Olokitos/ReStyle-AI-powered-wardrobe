@@ -36,7 +36,8 @@ return [
     ],
 
     'huggingface' => [
-        'api_key' => env('HUGGINGFACE_API_KEY'),
+        'api_key' => env('HUGGING_FACE_API_TOKEN', env('HUGGINGFACE_API_KEY')), // Support both variable names
+        'api_token' => env('HUGGING_FACE_API_TOKEN'), // Primary token for new integration
         'model_name' => env('HUGGINGFACE_MODEL_NAME'),
         'model_url' => env('HUGGINGFACE_MODEL_URL'), // Optional: full URL overrides model_name
     ],

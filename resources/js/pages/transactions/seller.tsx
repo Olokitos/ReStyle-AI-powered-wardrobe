@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { 
-  DollarSign, 
   Eye, 
   Truck, 
   Package,
@@ -175,7 +174,7 @@ export default function SellerTransactions({ transactions, stats }: SellerTransa
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
-                  <DollarSign className="mr-3 h-8 w-8" />
+                  <span className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-lg font-bold text-green-600 dark:bg-green-900">₱</span>
                   My Sales
                 </h1>
                 <p className="text-gray-600 dark:text-gray-400 mt-2">
@@ -191,8 +190,8 @@ export default function SellerTransactions({ transactions, stats }: SellerTransa
               <CardContent className="pt-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-5 w-5 text-green-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 text-base font-bold text-green-600 dark:bg-green-900">
+                      ₱
                     </div>
                   </div>
                   <div className="ml-4">
@@ -285,7 +284,9 @@ export default function SellerTransactions({ transactions, stats }: SellerTransa
             {filteredTransactions.length === 0 ? (
               <Card>
                 <CardContent className="pt-6 text-center">
-                  <DollarSign className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-2xl font-bold text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                    ₱
+                  </div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                     No sales found
                   </h3>

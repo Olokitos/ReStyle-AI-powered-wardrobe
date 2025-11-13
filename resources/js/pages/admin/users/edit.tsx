@@ -5,7 +5,9 @@ import {
     ArrowLeft, 
     Users, 
     Save,
-    X
+    X,
+    CreditCard,
+    Shield
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -36,6 +38,10 @@ interface User {
     email_verified_at: string | null;
     created_at: string;
     updated_at: string;
+    gcash_number?: string | null;
+    bank_name?: string | null;
+    bank_account_number?: string | null;
+    bank_account_name?: string | null;
 }
 
 interface UserEditProps {
@@ -46,6 +52,10 @@ export default function UserEdit({ user }: UserEditProps) {
     const { data, setData, put, processing, errors } = useForm({
         name: user.name,
         email: user.email,
+        gcash_number: user.gcash_number || '',
+        bank_name: user.bank_name || '',
+        bank_account_number: user.bank_account_number || '',
+        bank_account_name: user.bank_account_name || '',
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -124,7 +134,17 @@ export default function UserEdit({ user }: UserEditProps) {
                                         id="email"
                                         type="email"
                                         value={data.email}
-                                        onChange={(e) => setData('email', e.target.value)}
+                                        onChange={(e) => {
+                                            // Remove any characters that are not letters, numbers, @, or .
+                                            const value = e.target.value.replace(/[^a-zA-Z0-9@.]/g, '');
+                                            setData('email', value);
+                                        }}
+                                        onKeyPress={(e) => {
+                                            // Only allow letters (a-z, A-Z), numbers (0-9), @, and .
+                                            if (!/[a-zA-Z0-9@.]/.test(e.key)) {
+                                                e.preventDefault();
+                                            }
+                                        }}
                                         placeholder="Enter email address"
                                         maxLength={100}
                                         required
@@ -133,6 +153,166 @@ export default function UserEdit({ user }: UserEditProps) {
                                     {errors.email && (
                                         <p className="text-sm text-red-600 dark:text-red-400">{errors.email}</p>
                                     )}
+                                </div>
+
+                                {/* Payment Information Section */}
+                                <div className="space-y-4 border-t pt-6 mt-6">
+                                    <div className="flex items-center space-x-3 mb-4">
+                                        <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                            <CreditCard className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                        </div>
+                                        <div>
+                                            <Label className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                Payment Information (Admin Only)
+                                            </Label>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                Manage user payment details for payouts
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* GCash Number */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="gcash_number" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            GCash Number
+                                        </Label>
+                                        <Input
+                                            id="gcash_number"
+                                            type="tel"
+                                            inputMode="numeric"
+                                            pattern="[0-9]{11,13}"
+                                            value={data.gcash_number}
+                                            onChange={(e) => {
+                                                // Remove any non-numeric characters
+                                                const value = e.target.value.replace(/[^0-9]/g, '');
+                                                setData('gcash_number', value);
+                                            }}
+                                            onKeyPress={(e) => {
+                                                // Only allow numeric characters (0-9)
+                                                if (!/[0-9]/.test(e.key)) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                            placeholder="09XXXXXXXXX"
+                                            maxLength={13}
+                                            className={errors.gcash_number ? 'border-red-500' : ''}
+                                        />
+                                        {errors.gcash_number && (
+                                            <p className="text-sm text-red-600 dark:text-red-400">{errors.gcash_number}</p>
+                                        )}
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            Enter GCash mobile number (PH format: 09XXXXXXXXX)
+                                        </div>
+                                    </div>
+
+                                    {/* Bank Information */}
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="bank_name" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center space-x-1">
+                                                <span>Bank Name</span>
+                                            </Label>
+                                            <Input
+                                                id="bank_name"
+                                                type="text"
+                                                value={data.bank_name}
+                                                onChange={(e) => {
+                                                    // Remove any characters that are not letters, numbers, spaces, or hyphens
+                                                    const value = e.target.value.replace(/[^a-zA-Z0-9\s-]/g, '');
+                                                    setData('bank_name', value);
+                                                }}
+                                                onKeyPress={(e) => {
+                                                    // Only allow letters, spaces, and common bank name characters
+                                                    if (!/[a-zA-Z0-9\s-]/.test(e.key)) {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
+                                                placeholder="e.g., BPI, BDO, RCBC, Metrobank"
+                                                maxLength={100}
+                                                className={errors.bank_name ? 'border-red-500' : ''}
+                                            />
+                                            {errors.bank_name && (
+                                                <p className="text-sm text-red-600 dark:text-red-400">{errors.bank_name}</p>
+                                            )}
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                Enter the full name of the bank
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label htmlFor="bank_account_number" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center space-x-1">
+                                                <span>Account Number</span>
+                                            </Label>
+                                            <Input
+                                                id="bank_account_number"
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={data.bank_account_number}
+                                                onChange={(e) => {
+                                                    // Remove any non-numeric characters
+                                                    const value = e.target.value.replace(/[^0-9]/g, '');
+                                                    setData('bank_account_number', value);
+                                                }}
+                                                onKeyPress={(e) => {
+                                                    // Only allow numeric characters (0-9)
+                                                    if (!/[0-9]/.test(e.key)) {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
+                                                placeholder="Enter account number (numbers only)"
+                                                maxLength={50}
+                                                className={`font-mono ${errors.bank_account_number ? 'border-red-500' : ''}`}
+                                            />
+                                            {errors.bank_account_number && (
+                                                <p className="text-sm text-red-600 dark:text-red-400">{errors.bank_account_number}</p>
+                                            )}
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                Enter bank account number (numbers only)
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="bank_account_name" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center space-x-1">
+                                            <span>Account Name</span>
+                                        </Label>
+                                        <Input
+                                            id="bank_account_name"
+                                            type="text"
+                                            value={data.bank_account_name}
+                                            onChange={(e) => {
+                                                // Remove any characters that are not letters, spaces, apostrophes, hyphens, or periods
+                                                const value = e.target.value.replace(/[^a-zA-Z\s'-.]/g, '');
+                                                setData('bank_account_name', value);
+                                            }}
+                                            onKeyPress={(e) => {
+                                                // Only allow letters, spaces, apostrophes, hyphens, and periods
+                                                if (!/[a-zA-Z\s'-.]/.test(e.key)) {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                            placeholder="Name as it appears on bank account"
+                                            maxLength={100}
+                                            className={errors.bank_account_name ? 'border-red-500' : ''}
+                                        />
+                                        {errors.bank_account_name && (
+                                            <p className="text-sm text-red-600 dark:text-red-400">{errors.bank_account_name}</p>
+                                        )}
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            Enter the exact name as it appears on the bank account
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                        <div className="flex items-start space-x-2">
+                                            <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                            <div className="text-xs text-blue-800 dark:text-blue-200">
+                                                <p className="font-medium mb-1">Security Notice</p>
+                                                <p className="text-blue-600 dark:text-blue-300">
+                                                    Payment information is encrypted and securely stored. Only administrators can view and edit this information.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Current Status */}

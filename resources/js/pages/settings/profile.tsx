@@ -3,8 +3,8 @@ import PasswordController from '@/actions/App/Http/Controllers/Settings/Password
 import { send } from '@/routes/verification';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Transition } from '@headlessui/react';
-import { Form, Head, Link, usePage } from '@inertiajs/react';
-import { useRef, useState } from 'react';
+import { Form, Head, Link, router, usePage } from '@inertiajs/react';
+import React, { useRef, useState } from 'react';
 import { User, Mail, Lock, Shield, Trash2, CheckCircle, AlertCircle, Eye, EyeOff, Save, Key, UserCheck, Bell, Palette, Globe, ArrowLeft, Settings, Edit3, Upload, Image as ImageIcon, CreditCard } from 'lucide-react';
 
 import DeleteUser from '@/components/delete-user';
@@ -20,6 +20,7 @@ import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import { edit } from '@/routes/settings/profile';
 import { dashboard } from '@/routes';
+import { edit as editAppearance } from '@/routes/appearance';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -88,7 +89,9 @@ export default function Profile({
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [profilePicture, setProfilePicture] = useState<File | null>(null);
-    const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(null);
+    const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(
+        auth.user.profile_picture ? `/storage/${auth.user.profile_picture}` : null
+    );
     const passwordInput = useRef<HTMLInputElement>(null);
     const currentPasswordInput = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -151,6 +154,26 @@ export default function Profile({
             
             img.src = objectUrl;
         }
+    };
+
+    const handleNotificationSettings = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Navigate to notification settings (placeholder for now)
+        alert('Notification Settings\n\nThis feature is coming soon! You will be able to manage your email notifications, push notifications, and other alert preferences here.');
+    };
+
+    const handleAppearance = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        router.get(editAppearance().url);
+    };
+
+    const handleLanguageRegion = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Navigate to language & region settings (placeholder for now)
+        alert('Language & Region Settings\n\nThis feature is coming soon! You will be able to change your language preference and regional settings here.');
     };
 
     return (
@@ -270,13 +293,24 @@ export default function Profile({
                                                         autoComplete="username"
                                                         placeholder="Enter your email address"
                                                         maxLength={100}
+                                                        onKeyPress={(e) => {
+                                                            // Only allow letters (a-z, A-Z), numbers (0-9), @, and .
+                                                            if (!/[a-zA-Z0-9@.]/.test(e.key)) {
+                                                                e.preventDefault();
+                                                            }
+                                                        }}
+                                                        onChange={(e) => {
+                                                            // Remove any characters that are not letters, numbers, @, or .
+                                                            const value = e.target.value.replace(/[^a-zA-Z0-9@.]/g, '');
+                                                            e.target.value = value;
+                                                        }}
                                                     />
                                                 </div>
                                                 <InputError message={errors.email} />
                                             </div>
                                         </div>
 
-                                        {/* Payment Method / GCash Section */}
+                                        {/* Payment Method / GCash Section - Users can see their own info */}
                                         <div className="space-y-2">
                                             <Label htmlFor="gcash_number" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                                 GCash Number
@@ -293,13 +327,151 @@ export default function Profile({
                                                     placeholder="09XXXXXXXXX"
                                                     maxLength={13}
                                                     minLength={11}
+                                                    onKeyPress={(e) => {
+                                                        // Only allow numeric characters (0-9)
+                                                        if (!/[0-9]/.test(e.key)) {
+                                                            e.preventDefault();
+                                                        }
+                                                    }}
+                                                    onChange={(e) => {
+                                                        // Remove any non-numeric characters
+                                                        const value = e.target.value.replace(/[^0-9]/g, '');
+                                                        e.target.value = value;
+                                                    }}
                                                 />
                                                 <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                                                     <CreditCard className="h-4 w-4" />
                                                 </span>
                                             </div>
                                             <InputError message={errors.gcash_number} />
-                                            <div className="text-xs text-gray-600 dark:text-gray-400 pt-1">Enter your GCash mobile number for payouts. For PH numbers only. Example: 09171234567</div>
+                                            <div className="text-xs text-gray-600 dark:text-gray-400 pt-1">
+                                                Enter your GCash mobile number for payouts. For PH numbers only. Example: 09171234567
+                                            </div>
+                                        </div>
+
+                                        {/* Bank Information Section - Users can see their own info */}
+                                        <div className="space-y-4 border-t pt-6 mt-6">
+                                            <div className="flex items-center space-x-3 mb-4">
+                                                <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                                    <CreditCard className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                                </div>
+                                                <div>
+                                                    <Label className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                        Bank Information for Payouts
+                                                    </Label>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                        Secure payment details for receiving payouts
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid gap-4 md:grid-cols-2">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="bank_name" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center space-x-1">
+                                                        <span>Bank Name</span>
+                                                        <span className="text-red-500">*</span>
+                                                    </Label>
+                                                    <Input
+                                                        id="bank_name"
+                                                        name="bank_name"
+                                                        type="text"
+                                                        className="h-11 border-gray-300 dark:border-gray-600 focus:border-green-500 focus:ring-green-500"
+                                                        defaultValue={auth.user.bank_name || ''}
+                                                        placeholder="e.g., BPI, BDO, RCBC, Metrobank"
+                                                        maxLength={100}
+                                                        onKeyPress={(e) => {
+                                                            // Only allow letters, spaces, and common bank name characters
+                                                            if (!/[a-zA-Z0-9\s-]/.test(e.key)) {
+                                                                e.preventDefault();
+                                                            }
+                                                        }}
+                                                        onChange={(e) => {
+                                                            // Remove any characters that are not letters, numbers, spaces, or hyphens
+                                                            const value = e.target.value.replace(/[^a-zA-Z0-9\s-]/g, '');
+                                                            e.target.value = value;
+                                                        }}
+                                                    />
+                                                    <InputError message={errors.bank_name} />
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                        Enter the full name of your bank
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="bank_account_number" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center space-x-1">
+                                                        <span>Account Number</span>
+                                                        <span className="text-red-500">*</span>
+                                                    </Label>
+                                                    <Input
+                                                        id="bank_account_number"
+                                                        name="bank_account_number"
+                                                        type="text"
+                                                        inputMode="numeric"
+                                                        className="h-11 border-gray-300 dark:border-gray-600 focus:border-green-500 focus:ring-green-500 font-mono"
+                                                        defaultValue={auth.user.bank_account_number || ''}
+                                                        placeholder="Enter account number (numbers only)"
+                                                        maxLength={50}
+                                                        onKeyPress={(e) => {
+                                                            // Only allow numeric characters (0-9)
+                                                            if (!/[0-9]/.test(e.key)) {
+                                                                e.preventDefault();
+                                                            }
+                                                        }}
+                                                        onChange={(e) => {
+                                                            // Remove any non-numeric characters
+                                                            const value = e.target.value.replace(/[^0-9]/g, '');
+                                                            e.target.value = value;
+                                                        }}
+                                                    />
+                                                    <InputError message={errors.bank_account_number} />
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                        Enter your bank account number (numbers only)
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="space-y-2">
+                                                <Label htmlFor="bank_account_name" className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center space-x-1">
+                                                    <span>Account Name</span>
+                                                    <span className="text-red-500">*</span>
+                                                </Label>
+                                                <Input
+                                                    id="bank_account_name"
+                                                    name="bank_account_name"
+                                                    type="text"
+                                                    className="h-11 border-gray-300 dark:border-gray-600 focus:border-green-500 focus:ring-green-500"
+                                                    defaultValue={auth.user.bank_account_name || ''}
+                                                    placeholder="Name as it appears on your bank account"
+                                                    maxLength={100}
+                                                    onKeyPress={(e) => {
+                                                        // Only allow letters, spaces, apostrophes, hyphens, and periods
+                                                        if (!/[a-zA-Z\s'-.]/.test(e.key)) {
+                                                            e.preventDefault();
+                                                        }
+                                                    }}
+                                                    onChange={(e) => {
+                                                        // Remove any characters that are not letters, spaces, apostrophes, hyphens, or periods
+                                                        const value = e.target.value.replace(/[^a-zA-Z\s'-.]/g, '');
+                                                        e.target.value = value;
+                                                    }}
+                                                />
+                                                <InputError message={errors.bank_account_name} />
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                    Enter the exact name as it appears on your bank account
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                                <div className="flex items-start space-x-2">
+                                                    <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                                    <div className="text-xs text-blue-800 dark:text-blue-200">
+                                                        <p className="font-medium mb-1">Security Notice</p>
+                                                        <p className="text-blue-600 dark:text-blue-300">
+                                                            Your bank information is encrypted and securely stored. This information is only visible to you and administrators for payout processing purposes.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         {/* Profile Picture Upload */}
@@ -639,15 +811,30 @@ export default function Profile({
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-3">
-                                <Button variant="outline" className="w-full justify-start">
+                                <Button 
+                                    type="button"
+                                    variant="outline" 
+                                    className="w-full justify-start hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                                    onClick={handleNotificationSettings}
+                                >
                                     <Bell className="mr-2 h-4 w-4" />
                                     Notification Settings
                                 </Button>
-                                <Button variant="outline" className="w-full justify-start">
+                                <Button 
+                                    type="button"
+                                    variant="outline" 
+                                    className="w-full justify-start hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                                    onClick={handleAppearance}
+                                >
                                     <Palette className="mr-2 h-4 w-4" />
                                     Appearance
                                 </Button>
-                                <Button variant="outline" className="w-full justify-start">
+                                <Button 
+                                    type="button"
+                                    variant="outline" 
+                                    className="w-full justify-start hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                                    onClick={handleLanguageRegion}
+                                >
                                     <Globe className="mr-2 h-4 w-4" />
                                     Language & Region
                                 </Button>

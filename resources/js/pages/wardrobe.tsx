@@ -2,7 +2,7 @@ import AppLayout from '@/layouts/app-layout';
 import { dashboard } from '@/routes';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthNavigation } from '@/hooks/use-auth-navigation';
 import { 
     Plus, 
@@ -47,7 +47,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-const categories = ['T-shirt', 'Polo', 'Pants', 'Shorts', 'Dress', 'Shoes', 'Hat', 'Accessories'];
+const categories = ['T-shirt', 'Polo', 'Pants', 'Jeans', 'Shorts', 'Dress', 'Shoes', 'Boots', 'Hat', 'Jacket', 'Accessories'];
 const colors = [
   'Black',
   'White',
@@ -79,10 +79,24 @@ const colors = [
   'Cream',
   'Ivory',
   'Mint',
+  'Camou',
   'Coral',
   'Turquoise',
 ];
-const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49', '50'];
+const apparelSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+const shoeSizes = ['5', '6', '7', '8', '9', '10', '11', '12'];
+const waistSizes = ['W28', 'W30', 'W32', 'W34', 'W36', 'W38', 'W40', 'W42', 'W44'];
+const fabrics = ['Cotton', 'Linen', 'Wool', 'Polyester', 'Silk', 'Denim', 'Leather', 'Synthetic', 'Blend', 'Rayon', 'Bamboo', 'Modal', 'Cashmere', 'Fleece', 'Waterproof'];
+
+type UserPreferenceState = {
+    preferredColors: string[];
+    preferredCategories: string[];
+    preferredBrands: string[];
+    preferredOccasions: string[];
+    styleNotes: string;
+    avoidColors: string[];
+    avoidCategories: string[];
+};
 
 interface WardrobeItem {
     id: number;
@@ -91,6 +105,7 @@ interface WardrobeItem {
     category: string;
     color: string;
     size?: string;
+    fabric?: string;
     description?: string;
     image_path?: string | null;
     image_url?: string | null;
@@ -103,6 +118,795 @@ interface WardrobeItem {
 interface WardrobeProps {
     wardrobeItems: WardrobeItem[];
 }
+
+type PreferenceFallbackResult = {
+    suggestion: {
+        message: string;
+        items: WardrobeItem[];
+        reason: string;
+        weatherContext?: {
+            temp: number;
+            condition: string;
+            windSpeed: number;
+        };
+    };
+    confidence: number;
+    statusMessage: string;
+};
+
+const categoryGroups: Record<string, string[]> = {
+    tops: ['top', 'shirt', 't-shirt', 'blouse', 'tank', 'sweater', 'hoodie'],
+    dresses: ['dress', 'romper', 'jumpsuit'],
+    bottoms: ['bottom', 'pants', 'jeans', 'shorts', 'skirt', 'legging'],
+    outerwear: ['jacket', 'coat', 'cardigan', 'blazer', 'outerwear'],
+    footwear: ['shoe', 'sneaker', 'boot', 'heel', 'sandal', 'loafer'],
+    accessories: ['bag', 'hat', 'accessory', 'scarf', 'belt'],
+};
+
+const classifyCategory = (category: string): string => {
+    const normalized = category.toLowerCase();
+    for (const [group, keywords] of Object.entries(categoryGroups)) {
+        if (keywords.some((keyword) => normalized.includes(keyword))) {
+            return group;
+        }
+    }
+    return 'others';
+};
+
+const getWeatherProfile = (temp: number, condition: string) => {
+    const normalizedCondition = condition.toLowerCase();
+
+    if (temp >= 30 || normalizedCondition.includes('hot')) {
+        return {
+            label: 'hot weather',
+            // Light colors that reflect heat: white, light blue, beige, pastels
+            preferredColors: ['white', 'light', 'beige', 'cream', 'pastel', 'sky', 'ivory', 'pearl'],
+            preferred: ['shirt', 't-shirt', 'dress', 'tank', 'short', 'skirt', 'sandal', 'linen', 'light', 'cotton', 'breathable'],
+            avoid: ['coat', 'jacket', 'sweater', 'hoodie', 'boot', 'black', 'dark', 'navy', 'brown'],
+            // Temperature-specific settings
+            tempRange: 'hot',
+            maxOuterwearScore: -5, // Strongly penalize outerwear in hot weather
+            preferLightOuterwear: true,
+        };
+    }
+
+    // Warm weather (24-29°C): Prefer light outerwear or no outerwear
+    if (temp >= 24 && temp < 30) {
+        return {
+            label: 'warm weather',
+            preferredColors: ['white', 'light', 'beige', 'cream', 'pastel', 'sky', 'ivory', 'pearl', 'blue', 'green'],
+            preferred: ['shirt', 't-shirt', 'dress', 'short', 'skirt', 'sandal', 'linen', 'light', 'cotton', 'breathable', 'light jacket', 'windbreaker'],
+            avoid: ['heavy jacket', 'coat', 'sweater', 'black', 'dark', 'navy'],
+            tempRange: 'warm',
+            maxOuterwearScore: -2, // Penalize heavy outerwear in warm weather
+            preferLightOuterwear: true,
+        };
+    }
+
+    // Cool weather (16-23°C): Light to medium outerwear optional
+    if (temp >= 16 && temp < 24) {
+        const baseProfile = {
+            label: 'mild weather',
+            preferredColors: [] as string[],
+            preferred: ['shirt', 't-shirt', 'jean', 'pant', 'dress', 'skirt', 'sneaker', 'light jacket', 'cardigan'],
+            avoid: [] as string[],
+            tempRange: 'mild',
+            maxOuterwearScore: 1, // Outerwear is optional but not penalized
+            preferLightOuterwear: true,
+        };
+
+        if (normalizedCondition.includes('rain') || normalizedCondition === 'rainy') {
+            baseProfile.preferred.push('jacket', 'hoodie', 'coat', 'boot', 'waterproof', 'long sleeve', 'pant', 'jean');
+            baseProfile.avoid.push('sandal', 'open', 'short', 'skirt', 'dress');
+            baseProfile.preferredColors.push('dark', 'black', 'navy', 'waterproof');
+            baseProfile.maxOuterwearScore = 3; // Outerwear is important for rain
+            baseProfile.preferLightOuterwear = false; // Any outerwear is good for rain
+        }
+
+        if (normalizedCondition.includes('wind')) {
+            baseProfile.preferred.push('jacket', 'windbreaker', 'scarf');
+            baseProfile.maxOuterwearScore = 2;
+        }
+
+        return baseProfile;
+    }
+
+    // Cold weather (≤15°C): Outerwear recommended
+    if (temp <= 15) {
+        return {
+            label: 'cool weather',
+            preferredColors: ['dark', 'black', 'navy', 'brown', 'gray', 'warm'],
+            preferred: ['coat', 'jacket', 'sweater', 'hoodie', 'long sleeve', 'pant', 'jean', 'boot', 'warm'],
+            avoid: ['short', 'tank', 'sandal', 'white', 'light'],
+            tempRange: 'cool',
+            maxOuterwearScore: 5, // Strongly prefer outerwear in cool weather
+            preferLightOuterwear: false, // Heavier is better when cold
+        };
+    }
+
+    // Fallback for any edge cases
+    const baseProfile = {
+        label: 'mild weather',
+        preferredColors: [] as string[],
+        preferred: ['shirt', 't-shirt', 'jean', 'pant', 'dress', 'skirt', 'sneaker'],
+        avoid: [] as string[],
+        tempRange: 'mild',
+        maxOuterwearScore: 0,
+        preferLightOuterwear: true,
+    };
+
+    if (normalizedCondition.includes('rain') || normalizedCondition === 'rainy') {
+        baseProfile.preferred.push('jacket', 'hoodie', 'coat', 'boot', 'waterproof', 'long sleeve', 'pant', 'jean');
+        baseProfile.avoid.push('sandal', 'open', 'short', 'skirt', 'dress');
+        baseProfile.preferredColors.push('dark', 'black', 'navy', 'waterproof');
+        baseProfile.maxOuterwearScore = 3;
+        baseProfile.preferLightOuterwear = false;
+    }
+
+    if (normalizedCondition.includes('wind')) {
+        baseProfile.preferred.push('jacket', 'windbreaker', 'scarf');
+        baseProfile.maxOuterwearScore = 2;
+    }
+
+    if (normalizedCondition.includes('snow')) {
+        baseProfile.preferred.push('coat', 'boot', 'thermal');
+        baseProfile.avoid.push('short', 'dress', 'skirt');
+        baseProfile.maxOuterwearScore = 5;
+        baseProfile.preferLightOuterwear = false;
+    }
+
+    return baseProfile;
+};
+
+type WeatherSuggestionResult = PreferenceFallbackResult;
+
+const buildWeatherBasedSuggestion = ({
+    wardrobeItems,
+    weather,
+    maxRecommendations,
+}: {
+    wardrobeItems: WardrobeItem[];
+    weather: any;
+    maxRecommendations: number;
+}): WeatherSuggestionResult => {
+    const temp = weather?.main?.temp ?? 27;
+    const condition = weather?.weather?.[0]?.main ?? 'Clear';
+    const conditionLower = condition.toLowerCase();
+    const windSpeed = weather?.wind?.speed ?? 5;
+
+    const profile = getWeatherProfile(temp, condition);
+
+    const grouped = wardrobeItems.reduce<Record<string, WardrobeItem[]>>((acc, item) => {
+        const group = classifyCategory(item.category || '');
+        acc[group] = acc[group] || [];
+        acc[group].push(item);
+        return acc;
+    }, {});
+
+    const selection: WardrobeItem[] = [];
+    const usedKeys = new Set<string>();
+    
+    // Get recently recommended items to avoid duplicates
+    const recentRecommendationsKey = 'recent_recommendations';
+    const recentRecommendations = JSON.parse(localStorage.getItem(recentRecommendationsKey) || '[]');
+    const recentItemIds = new Set(recentRecommendations.map((r: any) => r.itemId).filter(Boolean));
+
+    const takeFromGroup = (group: string, limit = 1, predicate?: (item: WardrobeItem) => boolean) => {
+        const source = grouped[group] || [];
+        let taken = 0;
+        for (const item of source) {
+            if (selection.length >= maxRecommendations) break;
+            const key = String(item.id ?? `${item.name}-${item.category}-${item.brand}`);
+            // Skip if already used or recently recommended
+            if (usedKeys.has(key) || recentItemIds.has(item.id)) continue;
+            if (predicate && !predicate(item)) continue;
+            selection.push(item);
+            usedKeys.add(key);
+            taken += 1;
+            if (taken >= limit) break;
+        }
+    };
+
+    let message = '';
+    const reasonParts: string[] = [`Weather: ${Math.round(temp)}°C · ${condition}`];
+
+    switch (profile.label) {
+        case 'hot weather': {
+            message = "It's hot out—let's keep things light and breathable.";
+            if ((grouped.dresses || []).length) {
+                takeFromGroup('dresses', 1);
+            } else {
+                takeFromGroup('tops', 1);
+                takeFromGroup('bottoms', 1);
+            }
+            takeFromGroup('footwear', 1, (item) =>
+                /sand|slip|flat/.test((item.name || '').toLowerCase()) ||
+                /sand|slip/.test((item.category || '').toLowerCase()),
+            );
+            // Skip outerwear in hot weather
+            break;
+        }
+        case 'warm weather': {
+            message = "Warm weather—light layers and breathable pieces.";
+            if ((grouped.dresses || []).length) {
+                takeFromGroup('dresses', 1);
+            } else {
+                takeFromGroup('tops', 1);
+                takeFromGroup('bottoms', 1);
+            }
+            // Prefer light outerwear (windbreaker, light jacket, cardigan) if available
+            // Skip heavy outerwear (denim jackets, coats, heavy jackets)
+            takeFromGroup('outerwear', 1, (item) => {
+                const itemName = (item.name || '').toLowerCase();
+                const itemCategory = (item.category || '').toLowerCase();
+                const itemFabric = ((item.fabric || '').toLowerCase());
+                // Prefer light outerwear only
+                return itemCategory.includes('windbreaker') || itemName.includes('windbreaker') ||
+                       itemCategory.includes('cardigan') || itemFabric.includes('cotton') ||
+                       itemFabric.includes('linen') || itemName.includes('light jacket');
+            });
+            takeFromGroup('footwear', 1, (item) =>
+                /sneaker|loafer|shoe|sand/.test((item.name || '').toLowerCase()) ||
+                /shoe|sneaker/.test((item.category || '').toLowerCase()),
+            );
+            break;
+        }
+        case 'cool weather': {
+            message = "Temps are cooler—building a layered look to stay cozy.";
+            takeFromGroup('tops', 1);
+            takeFromGroup('bottoms', 1);
+            takeFromGroup('outerwear', 1);
+            takeFromGroup('footwear', 1, (item) =>
+                /boot|leather|sneaker/.test((item.name || '').toLowerCase()) ||
+                /boot|shoe/.test((item.category || '').toLowerCase()),
+            );
+            break;
+        }
+        default: {
+            message = "Comfortable conditions—here's an easy everyday combo.";
+            if ((grouped.dresses || []).length) {
+                takeFromGroup('dresses', 1);
+            } else {
+                takeFromGroup('tops', 1);
+                takeFromGroup('bottoms', 1);
+            }
+            // Mild weather: Optional outerwear, prefer light if included
+            takeFromGroup('outerwear', 1, (item) => {
+                const itemName = (item.name || '').toLowerCase();
+                const itemCategory = (item.category || '').toLowerCase();
+                const itemFabric = ((item.fabric || '').toLowerCase());
+                // Prefer light outerwear in mild weather
+                if (profile.preferLightOuterwear) {
+                    return itemCategory.includes('windbreaker') || itemName.includes('windbreaker') ||
+                           itemCategory.includes('cardigan') || itemFabric.includes('cotton') ||
+                           itemFabric.includes('linen') || itemName.includes('light jacket');
+                }
+                return true; // Any outerwear is okay if not preferring light
+            });
+            takeFromGroup('footwear', 1, (item) =>
+                /sneaker|loafer|shoe/.test((item.name || '').toLowerCase()) ||
+                /shoe|sneaker/.test((item.category || '').toLowerCase()),
+            );
+        }
+    }
+
+    if (conditionLower.includes('rain') || conditionLower === 'rainy') {
+        reasonParts.push('Added rain-friendly layers for protection.');
+        // Prioritize outerwear (jackets, coats, hoodies) for rain
+        if ((grouped.outerwear || []).length) {
+            takeFromGroup('outerwear', 2); // Try to get 2 outerwear items for layering
+        }
+        // Prioritize boots and waterproof footwear
+        takeFromGroup('footwear', 1, (item) =>
+            /boot|waterproof|rain/.test((item.name || '').toLowerCase()) ||
+            /boot/.test((item.category || '').toLowerCase()),
+        );
+        // Avoid shorts, skirts, dresses in rain - prefer pants/bottoms
+        if ((grouped.bottoms || []).length) {
+            takeFromGroup('bottoms', 1, (item) => {
+                const cat = (item.category || '').toLowerCase();
+                return !cat.includes('short') && !cat.includes('skirt');
+            });
+        }
+    }
+
+    if (windSpeed > 10) {
+        reasonParts.push('Windy outside—favoring pieces that stay put.');
+        if (
+            !selection.some((item) => classifyCategory(item.category) === 'outerwear') &&
+            (grouped.outerwear || []).length
+        ) {
+            takeFromGroup('outerwear', 1);
+        }
+    }
+
+    // Add some randomness to selection order for variety
+    const priorityFillOrder = ['tops', 'bottoms', 'dresses', 'outerwear', 'footwear', 'accessories'];
+    const shuffledOrder = [...priorityFillOrder].sort(() => Math.random() - 0.5);
+    
+    for (const group of shuffledOrder) {
+        if (selection.length >= maxRecommendations) break;
+        // Try to get 1-2 items per category for variety (depending on maxRecommendations)
+        const limit = maxRecommendations <= 3 ? 1 : Math.floor(Math.random() * 2) + 1;
+        takeFromGroup(group, limit);
+    }
+
+    if (selection.length < maxRecommendations) {
+        // Shuffle remaining items to add variety
+        const shuffledItems = [...wardrobeItems].sort(() => Math.random() - 0.5);
+        for (const item of shuffledItems) {
+            if (selection.length >= maxRecommendations) break;
+            const key = String(item.id ?? `${item.name}-${item.category}-${item.brand}-${selection.length}`);
+            // Skip if already used or recently recommended
+            if (usedKeys.has(key) || recentItemIds.has(item.id)) continue;
+            
+            // Ensure category diversity
+            const itemCategory = classifyCategory(item.category || '');
+            const sameCategoryCount = selection.filter(
+                (selItem) => classifyCategory(selItem.category || '') === itemCategory
+            ).length;
+            if (sameCategoryCount >= 3) continue; // Max 3 items per category
+            
+            selection.push(item);
+            usedKeys.add(key);
+        }
+    }
+    
+    // Store recommended items in localStorage (keep last 20, expire after 7 days)
+    const now = Date.now();
+    const newRecommendations = selection.map((item) => ({
+        itemId: item.id,
+        timestamp: now
+    }));
+    const allRecommendations = [...recentRecommendations.filter((r: any) => 
+        now - r.timestamp < 7 * 24 * 60 * 60 * 1000 // Keep items from last 7 days
+    ), ...newRecommendations].slice(-20); // Keep last 20 items
+    localStorage.setItem(recentRecommendationsKey, JSON.stringify(allRecommendations));
+
+    const hasTopOrDress = selection.some((item) => {
+        const group = classifyCategory(item.category);
+        return group === 'tops' || group === 'dresses';
+    });
+    const hasBottom = selection.some((item) => classifyCategory(item.category) === 'bottoms');
+    const hasOuterLayer = selection.some((item) => classifyCategory(item.category) === 'outerwear');
+    const hasFootwear = selection.some((item) => classifyCategory(item.category) === 'footwear');
+
+    let confidence = 0.35;
+    confidence += hasTopOrDress ? 0.2 : 0;
+    confidence += hasBottom ? 0.15 : 0;
+    confidence += hasFootwear ? 0.1 : 0;
+    confidence += hasOuterLayer && profile.label !== 'hot weather' ? 0.1 : 0;
+    confidence = Math.min(confidence, 0.8);
+
+    return {
+        suggestion: {
+            message,
+            items: selection.slice(0, maxRecommendations),
+            reason: reasonParts.join(' '),
+            weatherContext: {
+                temp,
+                condition,
+                windSpeed,
+            },
+        },
+        confidence,
+        statusMessage: 'Generated a combo tailored to the current weather.',
+    };
+};
+
+const buildPreferenceBasedSuggestion = ({
+    wardrobeItems,
+    preferences,
+    weather,
+    maxRecommendations,
+}: {
+    wardrobeItems: WardrobeItem[];
+    preferences: UserPreferenceState;
+    weather: any;
+    maxRecommendations: number;
+}): PreferenceFallbackResult => {
+    const normalizedPreferredColors = new Set(
+        (preferences.preferredColors || []).map((color) => color.toLowerCase()),
+    );
+    const normalizedAvoidColors = new Set(
+        (preferences.avoidColors || []).map((color) => color.toLowerCase()),
+    );
+    const normalizedPreferredCategories = new Set(
+        (preferences.preferredCategories || []).map((category) => category.toLowerCase()),
+    );
+    const normalizedAvoidCategories = new Set(
+        (preferences.avoidCategories || []).map((category) => category.toLowerCase()),
+    );
+    const normalizedPreferredBrands = new Set(
+        (preferences.preferredBrands || []).map((brand) => brand.toLowerCase()),
+    );
+    const normalizedStyleTokens = (preferences.styleNotes || '')
+        .toLowerCase()
+        .split(/[\s,]+/)
+        .filter(Boolean);
+
+    const temp = weather?.main?.temp ?? 27;
+    const condition = weather?.weather?.[0]?.main ?? 'Clear';
+    const windSpeed = weather?.wind?.speed ?? 5;
+
+    const weatherProfile = getWeatherProfile(temp, condition);
+    const reasonNotes = new Set<string>();
+
+    const scoredItems = wardrobeItems.map((item) => {
+        const category = item.category?.toLowerCase() || '';
+        const color = item.color?.toLowerCase() || '';
+        const brand = item.brand?.toLowerCase() || '';
+        const name = item.name?.toLowerCase() || '';
+        const description = item.description?.toLowerCase() || '';
+
+        let score = 1; // base score to keep items viable
+        let matchedPreferredColor = false;
+        let matchedPreferredCategory = false;
+        let matchedPreferredBrand = false;
+        let weatherAligned = false;
+
+        if (normalizedPreferredColors.has(color)) {
+            score += 4;
+            matchedPreferredColor = true;
+            reasonNotes.add('your preferred colors');
+        }
+
+        if (normalizedAvoidColors.has(color)) {
+            score -= 6;
+        }
+
+        if (normalizedPreferredCategories.has(category)) {
+            score += 4;
+            matchedPreferredCategory = true;
+            reasonNotes.add('your go-to categories');
+        }
+
+        if (normalizedAvoidCategories.has(category)) {
+            score -= 6;
+        }
+
+        if (normalizedPreferredBrands.has(brand)) {
+            score += 2;
+            matchedPreferredBrand = true;
+            reasonNotes.add('brands you like');
+        }
+
+        // Weather-based category matching
+        if (weatherProfile.preferred.some((keyword) => category.includes(keyword) || name.includes(keyword))) {
+            score += 3;
+            weatherAligned = true;
+            reasonNotes.add(weatherProfile.label);
+        }
+
+        if (weatherProfile.avoid.some((keyword) => category.includes(keyword) || name.includes(keyword))) {
+            score -= 4;
+        }
+
+        // Temperature-based outerwear scoring (heavy vs light jackets)
+        const isOuterwear = category.includes('jacket') || category.includes('coat') || 
+                           category.includes('hoodie') || category.includes('blazer') ||
+                           name.includes('jacket') || name.includes('coat') || name.includes('hoodie');
+        
+        if (isOuterwear) {
+            // Detect heavy vs light outerwear based on fabric and category
+            const itemFabric = (item.fabric || '').toLowerCase();
+            const itemName = name.toLowerCase();
+            const itemCategory = category.toLowerCase();
+            
+            const isHeavyFabric = itemFabric.includes('denim') || itemFabric.includes('wool') || 
+                                 itemFabric.includes('fleece') || itemFabric.includes('cashmere') ||
+                                 itemFabric.includes('leather');
+            const isHeavyItem = itemCategory.includes('coat') || itemName.includes('denim jacket') ||
+                               itemName.includes('winter jacket') || itemName.includes('heavy') ||
+                               itemCategory.includes('heavy');
+            const isLightOuterwear = itemCategory.includes('windbreaker') || itemName.includes('windbreaker') ||
+                                    itemCategory.includes('cardigan') || itemFabric.includes('cotton') ||
+                                    itemFabric.includes('linen') || itemName.includes('light jacket');
+
+            const isHeavy = isHeavyFabric || isHeavyItem;
+
+            // Apply temperature-based scoring for outerwear
+            if (weatherProfile.tempRange === 'warm' && weatherProfile.maxOuterwearScore !== undefined) {
+                // Warm weather (24-29°C): Penalize heavy outerwear, allow light outerwear
+                if (isHeavy && !isLightOuterwear) {
+                    score += weatherProfile.maxOuterwearScore; // Usually -2 for warm weather
+                    reasonNotes.add('heavy outerwear not ideal for warm weather');
+                } else if (isLightOuterwear && weatherProfile.preferLightOuterwear) {
+                    score += 1; // Slight bonus for light outerwear in warm weather
+                    weatherAligned = true;
+                    reasonNotes.add('light outerwear for warm weather');
+                } else if (!isLightOuterwear && !isHeavy) {
+                    // Medium weight - neutral
+                    score += 0;
+                }
+            } else if (weatherProfile.tempRange === 'hot' && weatherProfile.maxOuterwearScore !== undefined) {
+                // Hot weather: Strongly penalize all outerwear
+                score += weatherProfile.maxOuterwearScore; // -5 for hot weather
+            } else if (weatherProfile.tempRange === 'cool' && weatherProfile.maxOuterwearScore !== undefined) {
+                // Cool weather: Prefer outerwear, heavier is better
+                if (isHeavy && !weatherProfile.preferLightOuterwear) {
+                    score += 2; // Bonus for heavy outerwear in cool weather
+                    weatherAligned = true;
+                    reasonNotes.add('warm layers for cool weather');
+                } else if (!isHeavy) {
+                    score += weatherProfile.maxOuterwearScore; // Still prefer outerwear, but lighter items get less bonus
+                }
+            } else if (weatherProfile.tempRange === 'mild' && weatherProfile.maxOuterwearScore !== undefined) {
+                // Mild weather (16-23°C): Outerwear optional, prefer light if included
+                if (isLightOuterwear && weatherProfile.preferLightOuterwear) {
+                    score += 1.5;
+                    weatherAligned = true;
+                } else if (isHeavy && weatherProfile.preferLightOuterwear) {
+                    score -= 1; // Slight penalty for heavy outerwear in mild weather
+                } else {
+                    score += weatherProfile.maxOuterwearScore; // Neutral for medium weight
+                }
+            }
+        }
+
+        // Weather-based color matching (especially for hot weather)
+        if (weatherProfile.preferredColors && weatherProfile.preferredColors.length > 0) {
+            const itemColorLower = color.toLowerCase();
+            if (weatherProfile.preferredColors.some((prefColor) => itemColorLower.includes(prefColor))) {
+                score += 2;
+                weatherAligned = true;
+                reasonNotes.add('weather-appropriate colors');
+            }
+            // Penalize colors that absorb heat in hot weather
+            if (weatherProfile.label === 'hot weather') {
+                if (itemColorLower.includes('black') || itemColorLower.includes('dark') || 
+                    itemColorLower.includes('navy') || itemColorLower.includes('brown')) {
+                    score -= 3;
+                }
+            }
+        }
+
+        // Fabric-based weather matching
+        const itemFabric = (item.fabric || '').toLowerCase();
+        if (itemFabric) {
+            if (weatherProfile.label === 'hot weather') {
+                // Prefer breathable fabrics for hot weather
+                if (itemFabric.includes('cotton') || itemFabric.includes('linen') || 
+                    itemFabric.includes('bamboo') || itemFabric.includes('modal')) {
+                    score += 2.5;
+                    weatherAligned = true;
+                    reasonNotes.add('breathable fabric');
+                }
+                // Avoid heavy/warm fabrics in hot weather
+                if (itemFabric.includes('wool') || itemFabric.includes('fleece') || 
+                    itemFabric.includes('cashmere')) {
+                    score -= 3;
+                }
+            } else if (weatherProfile.label === 'cool weather') {
+                // Prefer warm fabrics for cool weather
+                if (itemFabric.includes('wool') || itemFabric.includes('fleece') || 
+                    itemFabric.includes('cashmere')) {
+                    score += 2.5;
+                    weatherAligned = true;
+                    reasonNotes.add('warm fabric');
+                }
+            }
+            
+            // Rainy weather - prefer waterproof fabrics
+            if (condition.toLowerCase().includes('rain') || condition.toLowerCase() === 'rainy') {
+                if (itemFabric.includes('waterproof') || itemFabric.includes('synthetic')) {
+                    score += 2;
+                    weatherAligned = true;
+                    reasonNotes.add('water-resistant fabric');
+                }
+            }
+        }
+
+        if (condition.toLowerCase().includes('rain')) {
+            if (category.includes('jacket') || category.includes('coat') || name.includes('rain')) {
+                score += 2;
+                weatherAligned = true;
+                reasonNotes.add('rain-ready layers');
+            }
+            if (category.includes('sandal') || category.includes('open')) {
+                score -= 3;
+            }
+        }
+
+        if (windSpeed > 10 && (category.includes('scarf') || category.includes('jacket'))) {
+            score += 1.5;
+            weatherAligned = true;
+        }
+
+        if (
+            normalizedStyleTokens.length > 0 &&
+            normalizedStyleTokens.some(
+                (token) => name.includes(token) || description?.includes(token) || category.includes(token),
+            )
+        ) {
+            score += 1.5;
+            reasonNotes.add('the vibe described in your style notes');
+        }
+
+        return {
+            item,
+            score,
+            metrics: {
+                matchedPreferredColor,
+                matchedPreferredCategory,
+                matchedPreferredBrand,
+                weatherAligned,
+            },
+        };
+    });
+
+    // Get recently recommended items from localStorage to avoid duplicates
+    const recentRecommendationsKey = 'recent_recommendations';
+    const recentRecommendations = JSON.parse(localStorage.getItem(recentRecommendationsKey) || '[]');
+    const recentItemIds = new Set(recentRecommendations.map((r: any) => r.itemId).filter(Boolean));
+    
+    const viableItems = scoredItems
+        .filter(({ score, item }) => {
+            // Filter out low scores AND recently recommended items
+            return score > -2 && !recentItemIds.has(item.id);
+        })
+        .sort((a, b) => b.score - a.score);
+
+    // Group items by score ranges to ensure variety (not just top scores)
+    const scoreGroups: { [key: string]: typeof scoredItems } = {};
+    viableItems.forEach((entry) => {
+        // Group items into score ranges (e.g., 10-15, 15-20, 20+)
+        const scoreRange = Math.floor(entry.score / 5) * 5;
+        const rangeKey = `range_${scoreRange}`;
+        if (!scoreGroups[rangeKey]) {
+            scoreGroups[rangeKey] = [];
+        }
+        scoreGroups[rangeKey].push(entry);
+    });
+
+    const selection: typeof scoredItems = [];
+    const usedIds = new Set<number>();
+    const categoryOrder = ['tops', 'bottoms', 'dresses', 'outerwear', 'footwear', 'accessories'];
+
+    // First pass: Get one item from each category from different score ranges for variety
+    for (const group of categoryOrder) {
+        if (selection.length >= maxRecommendations) break;
+        
+        // Shuffle score groups to get variety in selection order
+        const shuffledRanges = Object.keys(scoreGroups).sort(() => Math.random() - 0.5);
+        
+        for (const rangeKey of shuffledRanges) {
+            if (selection.length >= maxRecommendations) break;
+            // Shuffle items within the score range for variety
+            const shuffledItems = [...scoreGroups[rangeKey]].sort(() => Math.random() - 0.5);
+            const match = shuffledItems.find(
+                ({ item }) => !usedIds.has(item.id) && 
+                classifyCategory(item.category || '') === group &&
+                !recentItemIds.has(item.id)
+            );
+            if (match) {
+                selection.push(match);
+                usedIds.add(match.item.id);
+                break; // Found one for this category, move to next category
+            }
+        }
+    }
+
+    // Second pass: Fill remaining slots with diverse items (mix of high and medium scores)
+    const allScoreRanges = Object.keys(scoreGroups).sort((a, b) => {
+        // Sort by score range (highest first), but add some randomness
+        const scoreA = parseInt(a.split('_')[1]);
+        const scoreB = parseInt(b.split('_')[1]);
+        if (Math.abs(scoreA - scoreB) <= 5) {
+            // If scores are close, randomize to add variety
+            return Math.random() - 0.5;
+        }
+        return scoreB - scoreA;
+    });
+
+    for (const rangeKey of allScoreRanges) {
+        if (selection.length >= maxRecommendations) break;
+        // Shuffle items in this range
+        const shuffledItems = [...scoreGroups[rangeKey]].sort(() => Math.random() - 0.5);
+        for (const entry of shuffledItems) {
+            if (selection.length >= maxRecommendations) break;
+            if (usedIds.has(entry.item.id)) continue;
+            // Ensure category diversity - don't add too many of same category
+            const entryCategory = classifyCategory(entry.item.category || '');
+            const sameCategoryCount = selection.filter(
+                ({ item }) => classifyCategory(item.category || '') === entryCategory
+            ).length;
+            // Allow max 2 items per category (or 3 if we need more items)
+            if (sameCategoryCount >= (maxRecommendations <= 3 ? 2 : 3)) continue;
+            
+            selection.push(entry);
+            usedIds.add(entry.item.id);
+        }
+    }
+
+    // Final pass: If still need items, get any remaining viable items
+    for (const entry of viableItems) {
+        if (selection.length >= maxRecommendations) break;
+        if (usedIds.has(entry.item.id)) continue;
+        selection.push(entry);
+        usedIds.add(entry.item.id);
+    }
+    
+    // Store recommended items in localStorage (keep last 20, expire after 7 days)
+    const now = Date.now();
+    const newRecommendations = selection.map(({ item }) => ({
+        itemId: item.id,
+        timestamp: now
+    }));
+    const allRecommendations = [...recentRecommendations.filter((r: any) => 
+        now - r.timestamp < 7 * 24 * 60 * 60 * 1000 // Keep items from last 7 days
+    ), ...newRecommendations].slice(-20); // Keep last 20 items
+    localStorage.setItem(recentRecommendationsKey, JSON.stringify(allRecommendations));
+
+    let finalItems = selection.map(({ item }) => item);
+
+    if (!finalItems.length) {
+        finalItems = wardrobeItems.slice(0, maxRecommendations);
+    }
+
+    const preferredMatchCount = selection.filter((entry) => entry.metrics.matchedPreferredCategory).length;
+    const colorMatchCount = selection.filter((entry) => entry.metrics.matchedPreferredColor).length;
+    const weatherMatchCount = selection.filter((entry) => entry.metrics.weatherAligned).length;
+
+    const confidence =
+        finalItems.length === 0
+            ? 0.15
+            : Math.min(
+                  0.85,
+                  0.25 +
+                      (preferredMatchCount / Math.max(finalItems.length, 1)) * 0.25 +
+                      (colorMatchCount / Math.max(finalItems.length, 1)) * 0.2 +
+                      (weatherMatchCount / Math.max(finalItems.length, 1)) * 0.2,
+              );
+
+    const reasonMessage =
+        reasonNotes.size > 0
+            ? `Matched ${Array.from(reasonNotes).join(', ')}.`
+            : 'Showing a mix of pieces from your wardrobe.';
+
+    const message =
+        finalItems.length > 0
+            ? `Here’s a preference-based look built from your wardrobe.`
+            : `We couldn’t find enough items that match your saved preferences—showing recent additions instead.`;
+
+    const weatherSuggestion = buildWeatherBasedSuggestion({
+        wardrobeItems,
+        weather,
+        maxRecommendations,
+    });
+
+    const dedupedItems = [
+        ...new Map(
+            [...finalItems, ...weatherSuggestion.suggestion.items].map((item, index) => [
+                item.id ?? `${item.name}-${index}`,
+                item,
+            ]),
+        ).values(),
+    ].slice(0, maxRecommendations);
+
+    const combinedReason = [reasonMessage, weatherSuggestion.suggestion.reason]
+        .filter(Boolean)
+        .join(' ');
+
+    const combinedMessage =
+        finalItems.length > 0
+            ? `Here’s a look that blends your preferences with today’s weather.`
+            : weatherSuggestion.suggestion.message;
+
+    return {
+        suggestion: {
+            message: combinedMessage,
+            items: dedupedItems,
+            reason: combinedReason,
+            weatherContext: weatherSuggestion.suggestion.weatherContext,
+        },
+        confidence: Math.max(confidence, weatherSuggestion.confidence),
+        statusMessage:
+            finalItems.length > 0
+                ? 'Hugging Face API unavailable—mixing your saved preferences with weather-friendly picks.'
+                : weatherSuggestion.statusMessage,
+    };
+};
 
 export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
     useAuthNavigation();
@@ -235,14 +1039,20 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
     const [selectedForToday, setSelectedForToday] = useState<number[]>([]);
     const [isWearingOutfit, setIsWearingOutfit] = useState(false);
     const [maxRecommendations, setMaxRecommendations] = useState(6); // Configurable number of recommendations
-    const [userPreferences, setUserPreferences] = useState({
-        preferredColors: [] as string[],
-        preferredCategories: [] as string[],
-        preferredBrands: [] as string[],
-        preferredOccasions: [] as string[],
+    const [isEditWeatherOpen, setIsEditWeatherOpen] = useState(false);
+    const [editedWeather, setEditedWeather] = useState({
+        temp: 0,
+        condition: 'Sunny',
+        location: ''
+    });
+    const [userPreferences, setUserPreferences] = useState<UserPreferenceState>({
+        preferredColors: [],
+        preferredCategories: [],
+        preferredBrands: [],
+        preferredOccasions: [],
         styleNotes: '',
-        avoidColors: [] as string[],
-        avoidCategories: [] as string[],
+        avoidColors: [],
+        avoidCategories: [],
     });
 
     // Handle dialog scroll behavior
@@ -274,6 +1084,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
             if (!silent) {
                 setWeatherLoading(true);
             }
+            let resolvedWeather: any = null;
             
             try {
                 const apiKey = import.meta.env.VITE_WEATHER_API_KEY;
@@ -321,6 +1132,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
 
                 const data = await response.json();
                 setWeather(data);
+                resolvedWeather = data;
                 lastLocationRef.current = { lat: latitude, lon: longitude, timestamp: Date.now() };
 
                 if (!silent) {
@@ -339,6 +1151,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                     if (response.ok) {
                         const data = await response.json();
                         setWeather(data);
+                        resolvedWeather = data;
                         lastLocationRef.current = {
                             lat: data?.coord?.lat ?? 10.3167,
                             lon: data?.coord?.lon ?? 123.95,
@@ -353,12 +1166,14 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                     }
                 } catch (fallbackError) {
                     console.error('Fallback weather fetch error:', fallbackError);
-                    setWeather({
+                    const fallback = {
                         name: 'Lapu-Lapu City',
                         main: { temp: 28, feels_like: 32, humidity: 75 },
                         weather: [{ main: 'Clouds', description: 'overcast clouds', icon: '04d' }],
                         wind: { speed: 8 },
-                    });
+                    };
+                    setWeather(fallback);
+                    resolvedWeather = fallback;
                     lastLocationRef.current = { lat: 10.3167, lon: 123.95, timestamp: Date.now() };
                     if (!silent) {
                         setSuccessMessage('Using demo weather data 🌤️');
@@ -370,6 +1185,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                     setWeatherLoading(false);
                 }
             }
+            return resolvedWeather;
         },
         [],
     );
@@ -377,10 +1193,11 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
     const MIN_DISTANCE_DELTA = 0.01; // ~1km
     const MIN_TIME_DELTA_MS = 5 * 60 * 1000; // 5 minutes
 
-    // Generate AI outfit suggestion with ML integration
+    // Generate AI outfit suggestion with ML integration using Hugging Face API
     const generateAISuggestion = async () => {
         setSuggestionLoading(true);
-        
+        let currentWeather = weather;
+
         try {
             if (!wardrobeItems.length) {
                 setAiSuggestion({
@@ -394,18 +1211,37 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                 return;
             }
 
-            if (!weather) {
+            if (!currentWeather) {
                 setSuccessMessage('Fetching weather data first... 🌤️');
                 setTimeout(() => setSuccessMessage(null), 2000);
-                await fetchWeather();
+                currentWeather = await fetchWeather();
             }
 
-            // Check local storage cache first
-            const cacheKey = `ai_recommendations_${weather.main.temp}_${weather.weather[0].main}_${maxRecommendations}`;
+            if (!currentWeather) {
+                currentWeather = {
+                    main: { temp: 27, feels_like: 29, humidity: 70 },
+                    weather: [{ main: 'Clear', description: 'clear sky' }],
+                    wind: { speed: 5 },
+                };
+            }
+
+            // Create cache key that includes weather AND preferences (so changing preferences invalidates cache)
+            const preferencesHash = JSON.stringify({
+                colors: userPreferences.preferredColors.sort(),
+                categories: userPreferences.preferredCategories.sort(),
+                brands: userPreferences.preferredBrands.sort(),
+                occasions: userPreferences.preferredOccasions.sort(),
+                avoidColors: userPreferences.avoidColors.sort(),
+                avoidCategories: userPreferences.avoidCategories.sort(),
+                styleNotes: userPreferences.styleNotes
+            });
+            const preferencesHashShort = btoa(preferencesHash).substring(0, 16); // Short hash
+            const cacheKey = `ai_recommendations_${currentWeather.main.temp}_${currentWeather.weather[0].main}_${preferencesHashShort}_${maxRecommendations}`;
             const cached = localStorage.getItem(cacheKey);
             const cacheTime = localStorage.getItem(`${cacheKey}_time`);
             
-            if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 3600000) { // 1 hour cache
+            // Reduced cache time to 5 minutes - ensures fresh recommendations when preferences/weather change
+            if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 300000) { // 5 minutes cache (reduced from 1 hour)
                 const cachedData = JSON.parse(cached);
                 setAiSuggestion(cachedData.suggestion);
                 setMlConfidence(cachedData.mlConfidence);
@@ -413,102 +1249,205 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                 return;
             }
 
-            // Call ML API
-            const response = await fetch('/api/ai-recommendations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                },
-                body: JSON.stringify({
-                    weather: weather,
-                    occasion: 'casual', // Default occasion, can be made dynamic
-                    max_recommendations: maxRecommendations
-                })
+            // Try to get recommendations from Hugging Face API first
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                
+                const response = await fetch('/api/wardrobe/ai-recommendations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        wardrobe_items: wardrobeItems,
+                        weather: currentWeather,
+                        preferences: userPreferences,
+                        max_recommendations: maxRecommendations,
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.success && data.recommendations) {
+                        const recommendations = data.recommendations;
+                        
+                        setAiSuggestion(recommendations);
+                        setMlConfidence(recommendations.confidence || 0.85);
+                        setSuccessMessage('🤖 AI-powered outfit suggestions generated using Hugging Face! ✨');
+                        setTimeout(() => setSuccessMessage(null), 4000);
+                        
+                        // Cache the result
+                        localStorage.setItem(cacheKey, JSON.stringify({
+                            suggestion: recommendations,
+                            mlConfidence: recommendations.confidence || 0.85
+                        }));
+                        localStorage.setItem(`${cacheKey}_time`, Date.now().toString());
+                        
+                        setSuggestionLoading(false);
+                        return; // Success! Exit early
+                    }
+                }
+                
+                // If we get here, API call failed or returned unexpected data
+                console.warn('Hugging Face API call failed or returned unexpected data, falling back to local algorithm');
+                
+            } catch (apiError) {
+                console.warn('Hugging Face API error, falling back to local algorithm:', apiError);
+            }
+
+            // Fallback: Use preference-based suggestions that combine preferences with weather
+            // This ensures suggestions are personalized based on user preferences AND current weather
+            const suggestion = buildPreferenceBasedSuggestion({
+                wardrobeItems,
+                preferences: userPreferences,
+                weather: currentWeather,
+                maxRecommendations,
             });
 
-            if (response.ok) {
-                const data = await response.json();
-                
-                if (data.success) {
-                    setAiSuggestion(data.recommendations);
-                    setMlConfidence(data.ml_confidence);
-                    
-                    // Cache the result
-                    localStorage.setItem(cacheKey, JSON.stringify({
-                        suggestion: data.recommendations,
-                        mlConfidence: data.ml_confidence
-                    }));
-                    localStorage.setItem(`${cacheKey}_time`, Date.now().toString());
-                    
-                    setSuccessMessage('AI recommendations generated successfully! 🤖✨');
-                    setTimeout(() => setSuccessMessage(null), 3000);
-                } else {
-                    throw new Error(data.message || 'Failed to get recommendations');
-                }
-            } else {
-                throw new Error('API request failed');
-            }
+            setAiSuggestion(suggestion.suggestion);
+            setMlConfidence(suggestion.confidence);
+            setSuccessMessage('Outfit suggestions generated based on your preferences and current weather! ✨');
+            setTimeout(() => setSuccessMessage(null), 4000);
+            
+            // Cache the result
+            localStorage.setItem(cacheKey, JSON.stringify({
+                suggestion: suggestion.suggestion,
+                mlConfidence: suggestion.confidence
+            }));
+            localStorage.setItem(`${cacheKey}_time`, Date.now().toString());
 
         } catch (error) {
-            console.error('ML API Error:', error);
+            console.error('Error generating suggestions:', error);
             
-            // Fallback to weather-based recommendations
-            const temp = weather.main.temp;
-            const condition = weather.weather[0].main.toLowerCase();
-            const windSpeed = weather.wind.speed;
-            
-            let suggestion: any = {
-                message: "",
-                items: [],
-                reason: "",
-                weather: {
-                    temp: temp,
-                    condition: condition,
-                    windSpeed: windSpeed
-                }
-            };
+            const fallback = buildPreferenceBasedSuggestion({
+                wardrobeItems,
+                preferences: userPreferences,
+                weather: currentWeather,
+                maxRecommendations,
+            });
 
-            // Temperature-based recommendations
-            if (temp > 30) {
-                suggestion.message = "It's hot! Stay cool with light, breathable clothing.";
-                suggestion.reason = "High temperature detected";
-                suggestion.items = wardrobeItems.filter(item => 
-                    item.category.toLowerCase().includes('shirt') || 
-                    item.category.toLowerCase().includes('dress') ||
-                    item.category.toLowerCase().includes('shorts')
-                ).slice(0, maxRecommendations);
-            } else if (temp < 15) {
-                suggestion.message = "It's chilly! Layer up with warm clothing.";
-                suggestion.reason = "Low temperature detected";
-                suggestion.items = wardrobeItems.filter(item => 
-                    item.category.toLowerCase().includes('shirt') || 
-                    item.category.toLowerCase().includes('pants') ||
-                    item.category.toLowerCase().includes('dress')
-                ).slice(0, maxRecommendations);
-            } else {
-                suggestion.message = "Perfect weather! Choose comfortable, versatile pieces.";
-                suggestion.reason = "Moderate temperature";
-                suggestion.items = wardrobeItems.slice(0, maxRecommendations);
-            }
-
-            // Weather condition adjustments
-            if (condition.includes('rain')) {
-                suggestion.message += " Don't forget rain protection!";
-                suggestion.items = suggestion.items.filter((item: WardrobeItem) => 
-                    item.category.toLowerCase().includes('jacket') ||
-                    item.category.toLowerCase().includes('coat')
-                ).concat(suggestion.items).slice(0, maxRecommendations);
-            }
-
-            if (windSpeed > 10) {
-                suggestion.message += " It's windy - consider layers that won't blow around.";
-            }
-
-            setAiSuggestion(suggestion);
-            setMlConfidence(0.3); // Lower confidence for fallback
+            setAiSuggestion(fallback.suggestion);
+            setMlConfidence(fallback.confidence);
+            setSuccessMessage(fallback.statusMessage);
+            setTimeout(() => setSuccessMessage(null), 4000);
         } finally {
             setSuggestionLoading(false);
+        }
+    };
+
+    const handleRefreshWeather = async () => {
+        setWeatherLoading(true);
+        try {
+            // Clear cache before refreshing to ensure new recommendations
+            Object.keys(localStorage).forEach((key) => {
+                if (key.startsWith('ai_recommendations_')) {
+                    localStorage.removeItem(key);
+                    localStorage.removeItem(`${key}_time`);
+                }
+            });
+            
+            await fetchWeather();
+            // After refreshing weather, regenerate suggestions with new weather and preferences
+            if (wardrobeItems.length > 0) {
+                await generateAISuggestion();
+            }
+        } catch (error) {
+            console.error('Error refreshing weather:', error);
+        } finally {
+            setWeatherLoading(false);
+        }
+    };
+
+    // Handle opening edit weather dialog
+    const handleOpenEditWeather = () => {
+        if (weather) {
+            // Map API condition to display name
+            const apiToDisplayMap: { [key: string]: string } = {
+                'Clear': 'Sunny',
+                'Clouds': 'Cloudy',
+                'Rain': 'Rainy',
+                'Drizzle': 'Rainy',
+                'Thunderstorm': 'Rainy',
+                'Mist': 'Humid',
+                'Fog': 'Humid',
+                'Haze': 'Humid'
+            };
+            
+            const apiCondition = weather.weather?.[0]?.main || 'Clear';
+            const displayCondition = apiToDisplayMap[apiCondition] || 'Sunny';
+            
+            setEditedWeather({
+                temp: Math.round(weather.main?.temp || 0),
+                condition: displayCondition,
+                location: weather.name || ''
+            });
+        } else {
+            // Set default values if no weather loaded
+            setEditedWeather({
+                temp: 26,
+                condition: 'Sunny',
+                location: ''
+            });
+        }
+        setIsEditWeatherOpen(true);
+    };
+
+    // Handle saving edited weather
+    const handleSaveEditedWeather = async () => {
+        // Map display names to API-compatible values
+        const conditionMap: { [key: string]: string } = {
+            'Sunny': 'Clear',
+            'Hot': 'Clear',
+            'Cloudy': 'Clouds',
+            'Humid': 'Clouds',
+            'Rainy': 'Rain'
+        };
+        
+        const apiCondition = conditionMap[editedWeather.condition] || editedWeather.condition;
+        const description = editedWeather.condition.toLowerCase();
+        
+        const updatedWeather = {
+            ...weather,
+            main: {
+                ...weather?.main,
+                temp: editedWeather.temp,
+                feels_like: editedWeather.temp, // Use same as temp
+                humidity: weather?.main?.humidity || 70 // Keep existing or default
+            },
+            weather: [{
+                main: apiCondition,
+                description: description,
+                icon: '01d'
+            }],
+            wind: {
+                ...weather?.wind,
+                speed: weather?.wind?.speed || 5 // Keep existing or default
+            },
+            name: editedWeather.location || weather?.name || 'Manual'
+        };
+
+        setWeather(updatedWeather);
+        setIsEditWeatherOpen(false);
+        
+        // Clear cache when weather is manually updated
+        Object.keys(localStorage).forEach((key) => {
+            if (key.startsWith('ai_recommendations_')) {
+                localStorage.removeItem(key);
+                localStorage.removeItem(`${key}_time`);
+            }
+        });
+        
+        setSuccessMessage('Weather updated manually! ✨');
+        setTimeout(() => setSuccessMessage(null), 3000);
+
+        // Regenerate suggestions with new weather
+        if (wardrobeItems.length > 0) {
+            await generateAISuggestion();
         }
     };
 
@@ -724,17 +1663,42 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
         try {
             console.log('Saving preferences:', preferences);
             
-            // Get CSRF token
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || 
-                             document.querySelector('input[name="_token"]')?.getAttribute('value') || '';
+            // Get CSRF token - try multiple methods
+            let csrfToken = '';
+            const metaTag = document.querySelector('meta[name="csrf-token"]');
+            if (metaTag) {
+                csrfToken = metaTag.getAttribute('content') || '';
+            }
+            
+            // Fallback to input field if meta tag not found
+            if (!csrfToken) {
+                const inputTag = document.querySelector('input[name="_token"]');
+                if (inputTag) {
+                    csrfToken = (inputTag as HTMLInputElement).value || '';
+                }
+            }
+            
+            // If still no token, try to get from window (some Laravel setups)
+            if (!csrfToken && (window as any).Laravel?.csrfToken) {
+                csrfToken = (window as any).Laravel.csrfToken;
+            }
+            
+            if (!csrfToken) {
+                setSuccessMessage('CSRF token not found. Please refresh the page and try again.');
+                setTimeout(() => setSuccessMessage(null), 5000);
+                setIsSavingPreferences(false);
+                return false;
+            }
             
             const response = await fetch('/api/user-preferences', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
+                credentials: 'same-origin', // Important for cookies/CSRF
                 body: JSON.stringify({ preferences })
             });
 
@@ -745,6 +1709,13 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                 console.log('Response data:', data);
                 
                 if (data.success) {
+                    // Clear recommendation cache when preferences change
+                    Object.keys(localStorage).forEach((key) => {
+                        if (key.startsWith('ai_recommendations_')) {
+                            localStorage.removeItem(key);
+                            localStorage.removeItem(`${key}_time`);
+                        }
+                    });
                     setSuccessMessage('Preferences saved successfully! 🎨');
                     setTimeout(() => setSuccessMessage(null), 3000);
                     return true;
@@ -755,8 +1726,17 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                 }
             } else {
                 const errorData = await response.json().catch(() => ({}));
-                setSuccessMessage(`Error ${response.status}: ${errorData.message || 'Failed to save preferences'}`);
-                setTimeout(() => setSuccessMessage(null), 5000);
+                
+                // Handle CSRF token mismatch specifically
+                if (response.status === 419) {
+                    setSuccessMessage('Session expired. Please refresh the page and try again.');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 3000);
+                } else {
+                    setSuccessMessage(`Error ${response.status}: ${errorData.message || 'Failed to save preferences'}`);
+                    setTimeout(() => setSuccessMessage(null), 5000);
+                }
                 return false;
             }
         } catch (error) {
@@ -858,10 +1838,36 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
         category: '',
         color: '',
         size: '',
+        fabric: '',
         description: '',
         image: null as File | null,
         images: [] as File[], // For UI preview management
     });
+
+    const sizeOptions = useMemo(() => {
+        if (data.category === 'Shoes') {
+            return shoeSizes;
+        }
+        if (data.category === 'Jeans' || data.category === 'Pants') {
+            return waistSizes;
+        }
+        if (data.category === 'Accessories') {
+            return [];
+        }
+        return apparelSizes;
+    }, [data.category]);
+
+    useEffect(() => {
+        if (data.category === 'Accessories') {
+            setData('size', '');
+            return;
+        }
+
+        // Clear size if it's not valid for the current category
+        if (data.size && !sizeOptions.includes(data.size)) {
+            setData('size', '');
+        }
+    }, [data.category, data.size, sizeOptions, setData]);
 
     // Filter items based on search and filters
     const filteredItems = wardrobeItems.filter(item => {
@@ -924,6 +1930,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
             category: item.category,
             color: item.color,
             size: item.size || '',
+            fabric: item.fabric || '',
             description: item.description || '',
             images: [], // Will be populated when user uploads new images
         });
@@ -1220,372 +2227,27 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                     </Card>
                 </div>
 
-                        {/* Container 1: Management Controls */}
-                        <div className="grid gap-6 lg:grid-cols-2">
-                            {/* Left Container: Add Item & View Controls */}
-                <Card className="border-gray-200 dark:border-gray-700">
-                    <CardHeader>
-                                    <CardTitle className="text-xl flex items-center space-x-2">
-                                        <Plus className="h-5 w-5 text-green-600" />
-                                        <span>Add New Item</span>
-                                    </CardTitle>
-                                    <CardDescription>Create and manage your wardrobe items</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                            <Dialog open={isAddItemOpen} onOpenChange={setIsAddItemOpen}>
-                                <DialogTrigger asChild>
-                                            <Button className="bg-green-600 hover:bg-green-700 text-white w-full">
-                                        <Plus className="mr-2 h-4 w-4" />
-                                                Add New Wardrobe Item
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent className="sm:max-w-[600px] animate-in fade-in-0 zoom-in-95 duration-200 max-h-[95vh] overflow-hidden">
-                                    <DialogHeader>
-                                        <DialogTitle className="flex items-center space-x-2">
-                                            {isEditMode ? (
-                                                <>
-                                                    <Edit3 className="h-5 w-5 text-green-600" />
-                                                    <span>Edit Wardrobe Item</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Plus className="h-5 w-5 text-green-600" />
-                                                    <span>Add New Wardrobe Item</span>
-                                                </>
-                                            )}
-                                        </DialogTitle>
-                                        <DialogDescription>
-                                            {isEditMode 
-                                                ? `Update your "${editingItem?.name}" item details.` 
-                                                : 'Add a new item to your wardrobe collection.'
-                                            }
-                                        </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="overflow-y-auto max-h-[75vh] pr-2">
-                                    <form onSubmit={editingItem ? handleUpdateItem : handleAddItem}>
-                                        <div className="space-y-6 py-4">
-                                            {/* Row 1: Item Name and Brand */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="item-name">Item Name *</Label>
-                                                    <Input
-                                                        id="item-name"
-                                                        placeholder="e.g., Blue Cotton T-shirt"
-                                                        value={data.name}
-                                                        onChange={(e) => setData('name', e.target.value)}
-                                                        maxLength={100}
-                                                        required
-                                                        className={errors.name ? 'border-red-500' : ''}
-                                                    />
-                                                    {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
-                                                    <p className="text-xs text-gray-500">{data.name.length}/100 characters</p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="item-brand">Brand *</Label>
-                                                    <Input
-                                                        id="item-brand"
-                                                        placeholder="e.g., Nike, Zara, H&M"
-                                                        value={data.brand}
-                                                        onChange={(e) => setData('brand', e.target.value)}
-                                                        maxLength={50}
-                                                        required
-                                                        className={errors.brand ? 'border-red-500' : ''}
-                                                    />
-                                                    {errors.brand && <p className="text-red-500 text-sm">{errors.brand}</p>}
-                                                    <p className="text-xs text-gray-500">{data.brand.length}/50 characters</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Row 2: Category, Color, and Size */}
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="item-category">Category *</Label>
-                                                    <Select value={data.category} onValueChange={(value) => setData('category', value)}>
-                                                        <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
-                                                            <SelectValue placeholder="Select category" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {categories.map((category) => (
-                                                                <SelectItem key={category} value={category}>
-                                                                    {category}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    {errors.category && <p className="text-red-500 text-sm">{errors.category}</p>}
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="item-color">Color *</Label>
-                                                    <Select value={data.color} onValueChange={(value) => setData('color', value)}>
-                                                        <SelectTrigger className={errors.color ? 'border-red-500' : ''}>
-                                                            <SelectValue placeholder="Select color" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {colors.map((color) => (
-                                                                <SelectItem key={color} value={color}>
-                                                                    {color}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    {errors.color && <p className="text-red-500 text-sm">{errors.color}</p>}
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="item-size">Size *</Label>
-                                                    <Select value={data.size} onValueChange={(value) => setData('size', value)}>
-                                                        <SelectTrigger className={errors.size ? 'border-red-500' : ''}>
-                                                            <SelectValue placeholder="Select size" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {sizes.map((size) => (
-                                                                <SelectItem key={size} value={size}>
-                                                                    {size}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    {errors.size && <p className="text-red-500 text-sm">{errors.size}</p>}
-                                                </div>
-                                            </div>
-
-                                            {/* Row 3: Description and Image */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="item-description">Style Notes</Label>
-                                                    <Textarea
-                                                        id="item-description"
-                                                        placeholder="Any additional notes about this item..."
-                                                        value={data.description}
-                                                        onChange={(e) => setData('description', e.target.value)}
-                                                        maxLength={200}
-                                                        rows={4}
-                                                        className="resize-none"
-                                                    />
-                                                    {errors.description && <p className="text-red-500 text-sm">{errors.description}</p>}
-                                                    <p className="text-xs text-gray-500">{data.description.length}/200 characters</p>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="item-image">Images *</Label>
-                                                    <div className="space-y-3">
-                                                        {/* Initial upload button */}
-                                                        {imagePreviews.length === 0 && (
-                                                            <div className="space-y-3">
-                                                                <Input
-                                                                    ref={fileInputRef}
-                                                                    id="item-image"
-                                                                    type="file"
-                                                                    accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                                                                    onChange={(e) => handleImageChange(e)}
-                                                                    disabled={isUploadingImage}
-                                                                    className="cursor-pointer"
-                                                                />
-                                                                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                                                                    <div className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
-                                                                        <p className="font-medium">Upload images from your device</p>
-                                                                        <p className="text-blue-600 dark:text-blue-300">Accepted formats: JPEG, PNG only</p>
-                                                                        <p className="text-blue-600 dark:text-blue-300">File size: Maximum 5MB per image</p>
-                                                                        <p className="text-blue-600 dark:text-blue-300">Maximum: 5 images per item</p>
-                                                                        <p className="text-blue-500 dark:text-blue-400">Recommended: 500x500px or larger</p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        
-                                                        {/* Image previews with individual controls */}
-                                                        {imagePreviews.length > 0 && (
-                                                            <div className="space-y-3">
-                                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                                    {imagePreviews.map((preview, index) => (
-                                                                        <div key={index} className="relative group">
-                                                                            <div className="relative">
-                                                                                <img 
-                                                                                    src={preview} 
-                                                                                    alt={`Preview ${index + 1}`} 
-                                                                                    className="w-full h-24 object-cover rounded-lg border-2 border-green-500"
-                                                                                />
-                                                                                {/* Remove button */}
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => removeImage(index)}
-                                                                                    className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                                >
-                                                                                    <X className="h-3 w-3" />
-                                                                                </button>
-                                                                                {/* Replace button */}
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => {
-                                                                                        const input = document.createElement('input');
-                                                                                        input.type = 'file';
-                                                                                        input.accept = '.jpg,.jpeg,.png,image/jpeg,image/png';
-                                                                                        input.onchange = (e) => handleImageChange(e as any, index);
-                                                                                        input.click();
-                                                                                    }}
-                                                                                    className="absolute bottom-1 right-1 bg-blue-500 hover:bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                                >
-                                                                                    <Edit3 className="h-3 w-3" />
-                                                                                </button>
-                                                                                {/* Image number */}
-                                                                                <div className="absolute top-1 left-1 bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                                                                                    {index + 1}
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                    
-                                                                    {/* Add more button */}
-                                                                    {imagePreviews.length < 5 && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={addImageSlot}
-                                                                            disabled={isUploadingImage}
-                                                                            className="w-full h-24 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors group"
-                                                                        >
-                                                                            <Plus className="h-6 w-6 text-gray-400 group-hover:text-blue-500" />
-                                                                            <span className="text-xs text-gray-500 group-hover:text-blue-600 mt-1">Add Image</span>
-                                                                        </button>
-                                                                    )}
-                                                                </div>
-                                                                
-                                                                <div className="flex items-center justify-between text-sm">
-                                                                    <p className="text-green-600 dark:text-green-400 font-medium">
-                                                                        ✓ {imagePreviews.length} image{imagePreviews.length > 1 ? 's' : ''} ready
-                                                                    </p>
-                                                                    <p className="text-gray-500">
-                                                                        {imagePreviews.length}/5 images
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        
-                                                        {isUploadingImage && (
-                                                            <div className="flex items-center space-x-2 text-sm text-blue-600">
-                                                                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                                                <span>Processing image...</span>
-                                                            </div>
-                                                        )}
-                                                        
-                                                        {errors.images && <p className="text-red-500 text-sm">{errors.images}</p>}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex justify-end space-x-2">
-                                            <Button 
-                                                type="button" 
-                                                variant="outline" 
-                                                onClick={handleCancelEdit}
-                                                disabled={processing}
-                                            >
-                                                Cancel
-                                            </Button>
-                                            <Button 
-                                                type="submit" 
-                                                disabled={processing || isUploadingImage}
-                                                className="bg-green-600 hover:bg-green-700 transition-all duration-200"
-                                            >
-                                                {processing ? (
-                                                    <div className="flex items-center space-x-2">
-                                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                        <span>
-                                                            {data.image ? 'Uploading image...' : (isEditMode ? 'Updating...' : 'Adding...')}
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center space-x-2">
-                                                        {isEditMode ? <Edit3 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                                                        <span>{isEditMode ? 'Update Item' : 'Add Item'}</span>
-                                                    </div>
-                                                )}
-                                            </Button>
-                                        </div>
-                                    </form>
-                                    </div>
-                                </DialogContent>
-                            </Dialog>
-
-                                </CardContent>
-                            </Card>
-
-                            {/* Right Container: Search & Filters */}
-                            <Card className="border-gray-200 dark:border-gray-700">
-                                <CardHeader>
-                                    <CardTitle className="text-xl flex items-center space-x-2">
-                                        <Search className="h-5 w-5 text-green-600" />
-                                        <span>Search & Filter</span>
-                                    </CardTitle>
-                                    <CardDescription>Find and organize your wardrobe items</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                            {/* Search Items */}
-                            <div className="space-y-2">
-                                <Label htmlFor="search" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    Search Items
-                                </Label>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                    <Input
-                                        id="search"
-                                        placeholder="Search by name, brand, or style notes..."
-                                        className="pl-10 border-green-200 dark:border-green-800 focus:border-green-500 focus:ring-green-500"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        maxLength={50}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Category Dropdown */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    Category
-                                </Label>
-                                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                                    <SelectTrigger className="border-green-200 dark:border-green-800">
-                                        <SelectValue placeholder="Select category" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                                <SelectItem value="All">All Categories</SelectItem>
-                                        {categories.map((category) => (
-                                            <SelectItem key={category} value={category}>
-                                                {category}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            {/* Color Dropdown */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    Color
-                                </Label>
-                                <Select value={selectedColor} onValueChange={setSelectedColor}>
-                                    <SelectTrigger className="border-green-200 dark:border-green-800">
-                                        <SelectValue placeholder="Select color" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                                <SelectItem value="All">All Colors</SelectItem>
-                                        {colors.map((color) => (
-                                            <SelectItem key={color} value={color}>
-                                                {color}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
                         {/* Container 3: AI Recommender */}
                         <Card className="border-gray-200 dark:border-gray-700">
                             <CardHeader>
-                                <CardTitle className="text-xl flex items-center space-x-2">
-                                    <Sparkles className="h-5 w-5 text-purple-600" />
-                                    <span>AI Recommender</span>
-                                </CardTitle>
-                                <CardDescription>Get personalized outfit suggestions based on weather and your wardrobe</CardDescription>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle className="text-xl flex items-center space-x-2">
+                                            <Sparkles className="h-5 w-5 text-purple-600" />
+                                            <span>AI Recommender</span>
+                                        </CardTitle>
+                                        <CardDescription>Get personalized outfit suggestions based on weather and your wardrobe</CardDescription>
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleOpenEditWeather}
+                                        className="hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+                                    >
+                                        <Edit3 className="h-4 w-4 mr-2" />
+                                        Edit Weather
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 {/* Weather Card */}
@@ -1600,10 +2262,10 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                         <div className="w-12 h-12 bg-blue-100 dark:bg-blue-800 rounded-full flex items-center justify-center">
                                                             {weather?.weather?.[0]?.main === 'Clear' ? (
                                                                 <Sun className="h-6 w-6 text-yellow-500" />
-                                                            ) : weather?.weather?.[0]?.main === 'Rain' ? (
+                                                            ) : weather?.weather?.[0]?.main === 'Rain' || 
+                                                                  weather?.weather?.[0]?.main === 'Drizzle' ||
+                                                                  weather?.weather?.[0]?.main === 'Thunderstorm' ? (
                                                                 <CloudRain className="h-6 w-6 text-blue-500" />
-                                                            ) : weather?.weather?.[0]?.main === 'Snow' ? (
-                                                                <Snowflake className="h-6 w-6 text-blue-300" />
                                                             ) : (
                                                                 <Cloud className="h-6 w-6 text-gray-500" />
                                                             )}
@@ -1695,12 +2357,12 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    onClick={fetchWeather}
-                                                    disabled={weatherLoading}
+                                                    onClick={handleRefreshWeather}
+                                                    disabled={weatherLoading || suggestionLoading}
                                                     className="hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all duration-200"
                                                 >
                                                     <RefreshCw className={`h-4 w-4 mr-2 ${weatherLoading ? 'animate-spin' : ''}`} />
-                                                    {weatherLoading ? 'Updating...' : 'Weather'}
+                                                    {weatherLoading ? 'Updating...' : 'Refresh Weather'}
                                                 </Button>
                                                 <Button
                                                     variant="outline"
@@ -1710,7 +2372,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                     className="hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     <RefreshCw className={`h-4 w-4 mr-2 ${suggestionLoading ? 'animate-spin' : ''}`} />
-                                                    {suggestionLoading ? 'Generating...' : 'Refresh'}
+                                                    {suggestionLoading ? 'Generating...' : 'Refresh Suggestions'}
                                                 </Button>
                                                 <Button
                                                     variant="outline"
@@ -1731,7 +2393,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                 <div className="w-12 h-12 bg-purple-100 dark:bg-purple-800 rounded-full flex items-center justify-center mx-auto mb-4">
                                                     <Sparkles className="h-6 w-6 text-purple-600 animate-pulse" />
                                                 </div>
-                                                <p className="text-gray-600 dark:text-gray-400">AI is analyzing your wardrobe and weather...</p>
+                                                <p className="text-gray-600 dark:text-gray-400">AI is analyzing your wardrobe, preferences, and weather...</p>
                                             </div>
                                         ) : aiSuggestion ? (
                                             <div className="space-y-4">
@@ -1758,7 +2420,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                 
                                                 {aiSuggestion.items && aiSuggestion.items.length > 0 ? (
                                                     <div>
-                                                        <div className="flex items-center justify-between mb-3">
+                                                        <div className="flex items-center justify-between mb-4">
                                                             <h5 className="font-medium text-gray-900 dark:text-white">Recommended Items:</h5>
                                                             {selectedForToday.length > 0 && (
                                                                 <div className="flex items-center space-x-2">
@@ -1776,81 +2438,124 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div className={`grid gap-3 ${
-                                                            maxRecommendations <= 3 ? 'md:grid-cols-3' :
-                                                            maxRecommendations <= 6 ? 'md:grid-cols-2 lg:grid-cols-3' :
-                                                            maxRecommendations <= 9 ? 'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' :
-                                                            'md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'
-                                                        }`}>
-                                                            {aiSuggestion.items.map((item: WardrobeItem, index: number) => (
-                                                                <div 
-                                                                    key={item.id || index} 
-                                                                    className={`flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 cursor-pointer ${
-                                                                        selectedForToday.includes(item.id) 
-                                                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 ring-2 ring-blue-200 dark:ring-blue-800' 
-                                                                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750'
-                                                                    }`}
-                                                                    onClick={() => toggleItemSelection(item.id)}
-                                                                >
-                                                                    <div className="relative">
-                                                                        <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center relative group">
-                                                                            {getCurrentImage(item) ? (
-                                                                                <>
-                                                                                    <img 
-                                                                                        src={getCurrentImage(item) || ''} 
-                                                                                        alt={item.name}
-                                                                                        className="w-full h-full object-cover rounded-lg"
-                                                                                    />
-                                                                                    {/* Small navigation arrows for multiple images */}
-                                                                                    {getImageCount(item) > 1 && (
-                                                                                        <>
-                                                                                            <button
-                                                                                                onClick={(e) => {
-                                                                                                    e.stopPropagation();
-                                                                                                    prevImage(item.id, getImageCount(item));
-                                                                                                }}
-                                                                                                className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                                            >
-                                                                                                <ChevronLeft className="h-2 w-2" />
-                                                                                            </button>
-                                                                                            <button
-                                                                                                onClick={(e) => {
-                                                                                                    e.stopPropagation();
-                                                                                                    nextImage(item.id, getImageCount(item));
-                                                                                                }}
-                                                                                                className="absolute right-0 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                                            >
-                                                                                                <ChevronRight className="h-2 w-2" />
-                                                                                            </button>
-                                                                                        </>
-                                                                                    )}
-                                                                                </>
-                                                                            ) : (
-                                                                                <Shirt className="h-6 w-6 text-gray-400" />
+                                                        
+                                                        {/* Group items by category */}
+                                                        {(() => {
+                                                            const categoryMap: Record<string, string> = {
+                                                                tops: 'Tops',
+                                                                bottoms: 'Bottoms',
+                                                                dresses: 'Dresses',
+                                                                outerwear: 'Outerwear',
+                                                                footwear: 'Shoes & Footwear',
+                                                                accessories: 'Accessories',
+                                                                others: 'Other Items'
+                                                            };
+                                                            
+                                                            const categoryOrder = ['tops', 'bottoms', 'dresses', 'outerwear', 'footwear', 'accessories', 'others'];
+                                                            
+                                                            // Group items by category
+                                                            const groupedItems = aiSuggestion.items.reduce<Record<string, WardrobeItem[]>>((acc, item) => {
+                                                                const category = classifyCategory(item.category || '');
+                                                                if (!acc[category]) {
+                                                                    acc[category] = [];
+                                                                }
+                                                                acc[category].push(item);
+                                                                return acc;
+                                                            }, {});
+                                                            
+                                                            // Filter to only show categories that have items
+                                                            const activeCategories = categoryOrder.filter(cat => groupedItems[cat] && groupedItems[cat].length > 0);
+                                                            
+                                                            return (
+                                                                <div className="space-y-6">
+                                                                    {activeCategories.map((category, catIndex) => (
+                                                                        <div key={category} className="space-y-3">
+                                                                            {catIndex > 0 && (
+                                                                                <div className="border-t border-gray-200 dark:border-gray-700 pt-4"></div>
                                                                             )}
-                                                                        </div>
-                                                                        {selectedForToday.includes(item.id) && (
-                                                                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
-                                                                                <span className="text-white text-xs">✓</span>
+                                                                            <div className="flex items-center space-x-2 pb-2">
+                                                                                <h6 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">
+                                                                                    {categoryMap[category] || category}
+                                                                                </h6>
+                                                                                <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                                                                                    {groupedItems[category].length}
+                                                                                </span>
                                                                             </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                                                                            {item.name}
-                                                                        </p>
-                                                                        <p className="text-xs text-gray-600 dark:text-gray-400">
-                                                                            {item.brand} • {item.category}
-                                                                        </p>
-                                                                        {selectedForToday.includes(item.id) && (
-                                                                            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                                                                                Selected for today
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
+                                                                            <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                                                                                {groupedItems[category].map((item: WardrobeItem, index: number) => (
+                                                                                    <div 
+                                                                                        key={item.id || index} 
+                                                                                        className={`flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 cursor-pointer ${
+                                                                                            selectedForToday.includes(item.id) 
+                                                                                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 ring-2 ring-blue-200 dark:ring-blue-800' 
+                                                                                                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750'
+                                                                                        }`}
+                                                                                        onClick={() => toggleItemSelection(item.id)}
+                                                                                    >
+                                                                                        <div className="relative">
+                                                                                            <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center relative group">
+                                                                                                {getCurrentImage(item) ? (
+                                                                                                    <>
+                                                                                                        <img 
+                                                                                                            src={getCurrentImage(item) || ''} 
+                                                                                                            alt={item.name}
+                                                                                                            className="w-full h-full object-cover rounded-lg"
+                                                                                                        />
+                                                                                                        {/* Small navigation arrows for multiple images */}
+                                                                                                        {getImageCount(item) > 1 && (
+                                                                                                            <>
+                                                                                                                <button
+                                                                                                                    onClick={(e) => {
+                                                                                                                        e.stopPropagation();
+                                                                                                                        prevImage(item.id, getImageCount(item));
+                                                                                                                    }}
+                                                                                                                    className="absolute left-0 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                                                                >
+                                                                                                                    <ChevronLeft className="h-2 w-2" />
+                                                                                                                </button>
+                                                                                                                <button
+                                                                                                                    onClick={(e) => {
+                                                                                                                        e.stopPropagation();
+                                                                                                                        nextImage(item.id, getImageCount(item));
+                                                                                                                    }}
+                                                                                                                    className="absolute right-0 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                                                                >
+                                                                                                                    <ChevronRight className="h-2 w-2" />
+                                                                                                                </button>
+                                                                                                            </>
+                                                                                                        )}
+                                                                                                    </>
+                                                                                                ) : (
+                                                                                                    <Shirt className="h-6 w-6 text-gray-400" />
+                                                                                                )}
+                                                                                            </div>
+                                                                                            {selectedForToday.includes(item.id) && (
+                                                                                                <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                                                                                                    <span className="text-white text-xs">✓</span>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <div className="flex-1 min-w-0">
+                                                                                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                                                                                {item.name}
+                                                                                            </p>
+                                                                                            <p className="text-xs text-gray-600 dark:text-gray-400">
+                                                                                                {item.brand} • {item.category}
+                                                                                            </p>
+                                                                                            {selectedForToday.includes(item.id) && (
+                                                                                                <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                                                                                    Selected for today
+                                                                                                </p>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
                                                                 </div>
-                                                            ))}
-                                                        </div>
+                                                            );
+                                                        })()}
                                                         
                                                         {/* Action Buttons for Selected Items */}
                                                         {selectedForToday.length > 0 && (
@@ -1909,8 +2614,20 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                                     <Button
                                                                         variant="outline"
                                                                         size="sm"
+                                                                        onClick={() => {
+                                                                            submitFeedback('liked');
+                                                                            setSuccessMessage('✅ Great! This helps us recommend better outfits for you!');
+                                                                            setTimeout(() => setSuccessMessage(null), 3000);
+                                                                        }}
+                                                                        className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                                                                    >
+                                                                        ✅ This is a good outfit!
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
                                                                         onClick={() => submitFeedback('liked')}
-                                                                        className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                                                                     >
                                                                         👍 Liked
                                                                     </Button>
@@ -2244,6 +2961,99 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                             </CardContent>
                         </Card>
 
+                        {/* Container 1: Management Controls */}
+                        <div className="grid gap-6 lg:grid-cols-2 mb-6">
+                            {/* Left Container: Add Item & View Controls */}
+                            <Card className="border-gray-200 dark:border-gray-700">
+                                <CardHeader>
+                                    <CardTitle className="text-xl flex items-center space-x-2">
+                                        <Plus className="h-5 w-5 text-green-600" />
+                                        <span>Add New Item</span>
+                                    </CardTitle>
+                                    <CardDescription>Create and manage your wardrobe items</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <Button 
+                                        className="bg-green-600 hover:bg-green-700 text-white w-full"
+                                        onClick={() => setIsAddItemOpen(true)}
+                                    >
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add New Wardrobe Item
+                                    </Button>
+                                </CardContent>
+                            </Card>
+
+                            {/* Right Container: Search & Filters */}
+                            <Card className="border-gray-200 dark:border-gray-700">
+                                <CardHeader>
+                                    <CardTitle className="text-xl flex items-center space-x-2">
+                                        <Search className="h-5 w-5 text-green-600" />
+                                        <span>Search & Filter</span>
+                                    </CardTitle>
+                                    <CardDescription>Find and organize your wardrobe items</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    {/* Search Items */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="search" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Search Items
+                                        </Label>
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                            <Input
+                                                id="search"
+                                                placeholder="Search by name, brand, or style notes..."
+                                                className="pl-10 border-green-200 dark:border-green-800 focus:border-green-500 focus:ring-green-500"
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                maxLength={50}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Category Dropdown */}
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Category
+                                        </Label>
+                                        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                                            <SelectTrigger className="border-green-200 dark:border-green-800">
+                                                <SelectValue placeholder="Select category" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="All">All Categories</SelectItem>
+                                                {categories.map((category) => (
+                                                    <SelectItem key={category} value={category}>
+                                                        {category}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    {/* Color Dropdown */}
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            Color
+                                        </Label>
+                                        <Select value={selectedColor} onValueChange={setSelectedColor}>
+                                            <SelectTrigger className="border-green-200 dark:border-green-800">
+                                                <SelectValue placeholder="Select color" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="All">All Colors</SelectItem>
+                                                {colors.map((color) => (
+                                                    <SelectItem key={color} value={color}>
+                                                        {color}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
                         {/* Container 7: Items Display */}
                         <Card className="border-gray-200 dark:border-gray-700">
                             <CardHeader>
@@ -2318,6 +3128,9 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                                 </CardTitle>
                                                 <CardDescription className="text-sm text-gray-600 dark:text-gray-400">
                                                     {item.brand}
+                                                    {item.fabric && (
+                                                        <span className="ml-2 text-xs text-gray-500">• {item.fabric}</span>
+                                                    )}
                                                 </CardDescription>
                                             </div>
                                             <DropdownMenu>
@@ -2573,21 +3386,42 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                             </Select>
                                             {errors.color && <p className="text-red-500 text-sm">{errors.color}</p>}
                                         </div>
+                                        {data.category !== 'Accessories' && (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="item-size">Size *</Label>
+                                                <Select value={data.size} onValueChange={(value) => setData('size', value)}>
+                                                    <SelectTrigger className={errors.size ? 'border-red-500' : ''}>
+                                                        <SelectValue placeholder="Select size" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {sizeOptions.map((size) => (
+                                                            <SelectItem key={size} value={size}>
+                                                                {size}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                {errors.size && <p className="text-red-500 text-sm">{errors.size}</p>}
+                                            </div>
+                                        )}
                                         <div className="space-y-2">
-                                            <Label htmlFor="item-size">Size *</Label>
-                                            <Select value={data.size} onValueChange={(value) => setData('size', value)}>
-                                                <SelectTrigger className={errors.size ? 'border-red-500' : ''}>
-                                                    <SelectValue placeholder="Select size" />
+                                            <Label htmlFor="item-fabric">Fabric (Optional)</Label>
+                                            <Select 
+                                                value={data.fabric || undefined} 
+                                                onValueChange={(value) => setData('fabric', value === 'none' ? '' : value)}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select fabric" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {sizes.map((size) => (
-                                                        <SelectItem key={size} value={size}>
-                                                            {size}
+                                                    <SelectItem value="none">None</SelectItem>
+                                                    {fabrics.map((fabric) => (
+                                                        <SelectItem key={fabric} value={fabric}>
+                                                            {fabric}
                                                         </SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>
-                                            {errors.size && <p className="text-red-500 text-sm">{errors.size}</p>}
                                         </div>
                                     </div>
 
@@ -2746,6 +3580,76 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                         </div>
                     </DialogContent>
                 </Dialog>
+
+            {/* Edit Weather Dialog */}
+            <Dialog open={isEditWeatherOpen} onOpenChange={setIsEditWeatherOpen}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center space-x-2">
+                            <Edit3 className="h-5 w-5 text-blue-600" />
+                            <span>Edit Weather</span>
+                        </DialogTitle>
+                        <DialogDescription>
+                            Manually set the weather conditions for outfit recommendations.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="location">Location</Label>
+                            <Input
+                                id="location"
+                                value={editedWeather.location}
+                                onChange={(e) => setEditedWeather({ ...editedWeather, location: e.target.value })}
+                                placeholder="e.g., New York, Tokyo"
+                                className="mt-1"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="temp">Temperature (°C)</Label>
+                            <Input
+                                id="temp"
+                                type="number"
+                                value={editedWeather.temp}
+                                onChange={(e) => setEditedWeather({ ...editedWeather, temp: parseInt(e.target.value) || 0 })}
+                                className="mt-1"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="condition">Weather Condition</Label>
+                            <Select
+                                value={editedWeather.condition}
+                                onValueChange={(value) => setEditedWeather({ ...editedWeather, condition: value })}
+                            >
+                                <SelectTrigger className="mt-1">
+                                    <SelectValue placeholder="Select condition" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Sunny">Sunny</SelectItem>
+                                    <SelectItem value="Hot">Hot</SelectItem>
+                                    <SelectItem value="Cloudy">Cloudy</SelectItem>
+                                    <SelectItem value="Humid">Humid</SelectItem>
+                                    <SelectItem value="Rainy">Rainy</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex justify-end space-x-2 pt-4">
+                            <Button
+                                variant="outline"
+                                onClick={() => setIsEditWeatherOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSaveEditedWeather}
+                                className="bg-blue-600 hover:bg-blue-700"
+                            >
+                                <Save className="mr-2 h-4 w-4" />
+                                Save Weather
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Save Outfit Dialog */}
             <Dialog open={isSaveOutfitOpen} onOpenChange={setIsSaveOutfitOpen}>
@@ -2934,28 +3838,6 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                             </div>
                         </div>
 
-                        {/* Avoid Colors */}
-                        <div>
-                            <Label className="text-base font-medium mb-3 block">Colors to Avoid</Label>
-                            <div className="grid grid-cols-3 gap-2">
-                                {colors.map((color) => (
-                                    <Button
-                                        key={color}
-                                        variant={userPreferences.avoidColors.includes(color) ? "destructive" : "outline"}
-                                        size="sm"
-                                        onClick={() => togglePreference('avoidColors', color)}
-                                        className={`justify-start ${
-                                            userPreferences.avoidColors.includes(color)
-                                                ? 'bg-red-600 text-white'
-                                                : ''
-                                        }`}
-                                    >
-                                        {color}
-                                    </Button>
-                                ))}
-                            </div>
-                        </div>
-
                         {/* Preferred Categories */}
                         <div>
                             <Label className="text-base font-medium mb-3 block">Preferred Categories</Label>
@@ -2969,28 +3851,6 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                         className={`justify-start ${
                                             userPreferences.preferredCategories.includes(category)
                                                 ? 'bg-green-600 text-white'
-                                                : ''
-                                        }`}
-                                    >
-                                        {category}
-                                    </Button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Avoid Categories */}
-                        <div>
-                            <Label className="text-base font-medium mb-3 block">Categories to Avoid</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {categories.map((category) => (
-                                    <Button
-                                        key={category}
-                                        variant={userPreferences.avoidCategories.includes(category) ? "destructive" : "outline"}
-                                        size="sm"
-                                        onClick={() => togglePreference('avoidCategories', category)}
-                                        className={`justify-start ${
-                                            userPreferences.avoidCategories.includes(category)
-                                                ? 'bg-red-600 text-white'
                                                 : ''
                                         }`}
                                     >
@@ -3025,7 +3885,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                         {/* Style Notes */}
                         <div>
                             <Label htmlFor="style-notes" className="text-base font-medium mb-3 block">
-                                Style Notes
+                                Style Notes (Optional)
                             </Label>
                             <Textarea
                                 id="style-notes"
@@ -3039,7 +3899,7 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                                 maxLength={500}
                             />
                             <p className="text-xs text-gray-500 mt-1">
-                                {userPreferences.styleNotes.length}/500 characters
+                                {userPreferences.styleNotes.length}/500 characters (optional)
                             </p>
                         </div>
 
@@ -3048,10 +3908,11 @@ export default function Wardrobe({ wardrobeItems }: WardrobeProps) {
                             <h4 className="font-medium text-gray-900 dark:text-white mb-2">Current Preferences Summary</h4>
                             <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
                                 <p><strong>Preferred Colors:</strong> {userPreferences.preferredColors.join(', ') || 'None selected'}</p>
-                                <p><strong>Avoid Colors:</strong> {userPreferences.avoidColors.join(', ') || 'None selected'}</p>
                                 <p><strong>Preferred Categories:</strong> {userPreferences.preferredCategories.join(', ') || 'None selected'}</p>
-                                <p><strong>Avoid Categories:</strong> {userPreferences.avoidCategories.join(', ') || 'None selected'}</p>
                                 <p><strong>Occasions:</strong> {userPreferences.preferredOccasions.join(', ') || 'None selected'}</p>
+                                {userPreferences.styleNotes && (
+                                    <p><strong>Style Notes:</strong> {userPreferences.styleNotes}</p>
+                                )}
                             </div>
                         </div>
 

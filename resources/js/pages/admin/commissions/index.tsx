@@ -3,7 +3,6 @@ import { Head, Link } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
-  DollarSign, 
   TrendingUp, 
   Calendar, 
   Users, 
@@ -80,7 +79,7 @@ export default function CommissionIndex({ stats, recentTransactions, chartData }
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
-                  <DollarSign className="mr-3 h-8 w-8" />
+                  <span className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-lg font-bold text-green-600 dark:bg-green-900">₱</span>
                   Commission Dashboard
                 </h1>
                 <p className="text-gray-600 dark:text-gray-400 mt-2">
@@ -108,8 +107,8 @@ export default function CommissionIndex({ stats, recentTransactions, chartData }
               <CardContent className="pt-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-5 w-5 text-green-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 text-base font-bold text-green-600 dark:bg-green-900">
+                      ₱
                     </div>
                   </div>
                   <div className="ml-4">

@@ -11,8 +11,7 @@ import {
   Filter,
   Calendar,
   User,
-  Package,
-  DollarSign
+  Package
 } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 
@@ -27,6 +26,10 @@ interface CommissionRecord {
     status: string;
     product: {
       title: string;
+    };
+    buyer: {
+      id: number;
+      name: string;
     };
   };
   seller: {
@@ -103,7 +106,8 @@ export default function CommissionReport({ commissions, sellers, filters, summar
 
   const filteredCommissions = commissions.data.filter(commission => {
     const matchesSearch = commission.transaction.product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         commission.seller.name.toLowerCase().includes(searchTerm.toLowerCase());
+                         commission.seller.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         commission.transaction.buyer?.name.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
@@ -146,8 +150,8 @@ export default function CommissionReport({ commissions, sellers, filters, summar
               <CardContent className="pt-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                      <DollarSign className="h-5 w-5 text-green-600" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 text-base font-bold text-green-600 dark:bg-green-900">
+                      ₱
                     </div>
                   </div>
                   <div className="ml-4">
@@ -281,7 +285,7 @@ export default function CommissionReport({ commissions, sellers, filters, summar
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
-                  placeholder="Search by product or seller..."
+                  placeholder="Search by product, seller, or buyer..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -306,6 +310,7 @@ export default function CommissionReport({ commissions, sellers, filters, summar
                       <th className="text-left py-3 px-4 font-semibold">Date</th>
                       <th className="text-left py-3 px-4 font-semibold">Transaction ID</th>
                       <th className="text-left py-3 px-4 font-semibold">Seller</th>
+                      <th className="text-left py-3 px-4 font-semibold">Buyer</th>
                       <th className="text-left py-3 px-4 font-semibold">Product</th>
                       <th className="text-right py-3 px-4 font-semibold">Sale Price</th>
                       <th className="text-right py-3 px-4 font-semibold">Commission</th>
@@ -316,7 +321,7 @@ export default function CommissionReport({ commissions, sellers, filters, summar
                   <tbody>
                     {filteredCommissions.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="text-center py-8 text-gray-600 dark:text-gray-400">
+                        <td colSpan={9} className="text-center py-8 text-gray-600 dark:text-gray-400">
                           No commission records found
                         </td>
                       </tr>
@@ -331,6 +336,9 @@ export default function CommissionReport({ commissions, sellers, filters, summar
                           </td>
                           <td className="py-3 px-4 text-sm">
                             {commission.seller.name}
+                          </td>
+                          <td className="py-3 px-4 text-sm">
+                            {commission.transaction.buyer?.name || 'N/A'}
                           </td>
                           <td className="py-3 px-4 text-sm">
                             {commission.transaction.product.title}

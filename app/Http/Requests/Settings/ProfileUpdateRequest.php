@@ -40,6 +40,31 @@ class ProfileUpdateRequest extends FormRequest
                 'max:2048', // 2MB max
                 'dimensions:min_width=100,min_height=100,max_width=5000,max_height=5000',
             ],
+
+            'gcash_number' => [
+                'nullable',
+                'string',
+                'max:16',
+                'regex:/^09\d{9}$/', // PH mobile number format: 09XXXXXXXXX
+            ],
+
+            'bank_name' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+
+            'bank_account_number' => [
+                'nullable',
+                'string',
+                'max:50',
+            ],
+
+            'bank_account_name' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
         ];
     }
 
@@ -56,6 +81,7 @@ class ProfileUpdateRequest extends FormRequest
             'profile_picture.image' => 'The profile picture must be a valid image file.',
             'profile_picture.dimensions' => 'The profile picture must be at least 100x100 pixels and not exceed 5000x5000 pixels.',
             'profile_picture.max' => 'The profile picture must not exceed 2MB.',
+            'gcash_number.regex' => 'The GCash number must be a valid Philippine mobile number (09XXXXXXXXX format).',
         ];
     }
 }

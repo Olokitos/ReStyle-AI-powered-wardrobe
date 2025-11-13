@@ -2,18 +2,75 @@ import { SVGAttributes } from 'react';
 
 export default function AppLogoIcon(props: SVGAttributes<SVGElement>) {
     return (
-        <svg {...props} viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-            {/* Restyle "R" Logo */}
-            <g fill="currentColor">
-                {/* Main R shape */}
-                <path d="M8 6C8 4.9 8.9 4 10 4H20C21.1 4 22 4.9 22 6V14C22 15.1 21.1 16 20 16H16V20H22V24H16V32H12V16H10C8.9 16 8 15.1 8 14V6Z" />
-                
-                {/* R leg */}
-                <path d="M16 20H20C21.1 20 22 20.9 22 22V24C22 25.1 21.1 26 20 26H16V20Z" />
-                
-                {/* Decorative circle background */}
-                <circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+        <svg
+            {...props}
+            viewBox="0 0 240 240"
+            xmlns="http://www.w3.org/2000/svg"
+            role="img"
+            aria-label="Restyle logo"
+        >
+            <defs>
+                <linearGradient id="restyle-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#6FE37F" />
+                    <stop offset="100%" stopColor="#1C7B3A" />
+                </linearGradient>
+                <linearGradient id="restyle-leaf" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#9BF38F" />
+                    <stop offset="100%" stopColor="#3D9F4F" />
+                </linearGradient>
+                <linearGradient id="restyle-hanger" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#a8ff9d" />
+                    <stop offset="100%" stopColor="#2c9b4d" />
+                </linearGradient>
+            </defs>
+
+            {/* Background */}
+            <circle cx="120" cy="120" r="108" fill="#0f2d1d" opacity="0.92" />
+            <circle cx="120" cy="120" r="100" fill="none" stroke="url(#restyle-ring)" strokeWidth="10" />
+            <circle cx="120" cy="120" r="86" fill="#132f1f" />
+
+            {/* Hanger */}
+            <path
+                d="M120 70c-8 0-14 6-14 14 0 6.5 4.5 12 10.7 13.4l3.3.8v8.5l-44.8 26.8c-4.5 2.7-7.2 7.5-7.2 12.7V154c0 4.4 3.6 8 8 8h108c4.4 0 8-3.6 8-8v-7.8c0-5.2-2.7-10-7.2-12.7L120 106.7V96c9 0 16-7 16-16 0-5.8-3.8-10.9-9.2-12.8a13.3 13.3 0 0 0-4.8-.9Z"
+                fill="url(#restyle-hanger)"
+            />
+
+            {/* Leaves */}
+            <g fill="url(#restyle-leaf)" opacity="0.95">
+                <path d="M78 120c14-3 26 1 33 8-2 12-12 22-30 27-8-11-10-22-3-35Z" />
+                <path d="M100 150c8 9 20 12 32 6 2-12-2-21-12-28-9 5-16 12-20 22Z" />
+                <path d="M162 120c-14-3-26 1-33 8 2 12 12 22 30 27 8-11 10-22 3-35Z" />
+                <path d="M140 150c-8 9-20 12-32 6-2-12 2-21 12-28 9 5 16 12 20 22Z" />
             </g>
+
+            {/* Upper foliage accents */}
+            <g fill="url(#restyle-leaf)" opacity="0.9">
+                <path d="M90 102c-9-10-9-23 1-32 10 1 18 7 23 15-4 9-11 14-24 17Z" />
+                <path d="M150 102c9-10 9-23-1-32-10 1-18 7-23 15 4 9 11 14 24 17Z" />
+            </g>
+
+            {/* Text */}
+            <text
+                x="120"
+                y="34"
+                fontSize="28"
+                fontWeight="600"
+                fill="#9bf38f"
+                textAnchor="middle"
+                letterSpacing="6"
+            >
+                RESTYLE
+            </text>
+            <text
+                x="120"
+                y="210"
+                fontSize="18"
+                fill="#7fd87a"
+                textAnchor="middle"
+                letterSpacing="4"
+            >
+                WASTE LESS · WEAR MORE
+            </text>
         </svg>
     );
 }

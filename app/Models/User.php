@@ -25,6 +25,9 @@ class User extends Authenticatable
         'is_admin',
         'profile_picture',
         'gcash_number', // allow mass assignment
+        'bank_name',
+        'bank_account_number',
+        'bank_account_name',
     ];
 
     /**
@@ -73,5 +76,21 @@ class User extends Authenticatable
     public function receivedRatings()
     {
         return $this->hasMany(Rating::class, 'seller_id');
+    }
+
+    /**
+     * Favorites relationship.
+     */
+    public function favorites()
+    {
+        return $this->hasMany(Favorite::class);
+    }
+
+    /**
+     * Products the user has favorited.
+     */
+    public function favoriteProducts()
+    {
+        return $this->belongsToMany(Product::class, 'favorites')->withTimestamps();
     }
 }

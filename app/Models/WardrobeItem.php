@@ -18,6 +18,7 @@ class WardrobeItem extends Model
         'category',
         'color',
         'size',
+        'fabric',
         'description',
         'image_path',
         'images',

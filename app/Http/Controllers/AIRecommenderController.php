@@ -737,13 +737,18 @@ class AIRecommenderController extends Controller
                 'preferences.preferredCategories' => 'array',
                 'preferences.preferredBrands' => 'array',
                 'preferences.preferredOccasions' => 'array',
-                'preferences.styleNotes' => 'string|max:500',
+                'preferences.styleNotes' => 'nullable|string|max:500',
                 'preferences.avoidColors' => 'array',
                 'preferences.avoidCategories' => 'array',
             ]);
 
             $user = auth()->user();
             $preferences = $request->preferences;
+            
+            // Normalize empty string to null for styleNotes (optional field)
+            if (isset($preferences['styleNotes']) && $preferences['styleNotes'] === '') {
+                $preferences['styleNotes'] = null;
+            }
             
             // For now, we'll just return success
             // In a real implementation, you'd store these in a user_preferences table

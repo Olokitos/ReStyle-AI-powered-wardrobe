@@ -58,6 +58,11 @@ class ProfileController extends Controller
                     'profile_picture' => $e->getMessage()
                 ])->withInput();
             }
+        } else {
+            // Preserve existing profile picture if no new file is uploaded
+            if ($user->profile_picture) {
+                $validated['profile_picture'] = $user->profile_picture;
+            }
         }
 
         $user->fill($validated);

@@ -1,8 +1,9 @@
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { formatPrice } from '@/utils/price';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
     Search, 
     Plus, 
@@ -90,22 +91,96 @@ interface MarketplacePageProps {
         condition?: string;
         size?: string;
         color?: string;
+        sort?: string;
+        favorites?: string | boolean;
+        featured?: string | boolean;
+        new?: string | boolean;
     };
+    favoriteProductIds: number[];
 }
+
+type MarketplacePageOptionalFilters = Omit<MarketplacePageProps, 'filters' | 'favoriteProductIds'> & {
+    filters?: MarketplacePageProps['filters'];
+    favoriteProductIds?: number[];
+};
 
 export default function MarketplaceIndex({ 
     products, 
     categories, 
     featuredProducts, 
-    filters 
-}: MarketplacePageProps) {
+    filters,
+    favoriteProductIds = []
+}: MarketplacePageOptionalFilters) {
     const { auth } = usePage().props as { auth: { user: { id: number; name: string } } };
-    const [favorites, setFavorites] = useState<number[]>([]);
+    const normalizedFilters = filters ?? {};
+    const parseSizes = (value?: string) => (value ? value.split(',').filter(Boolean) : []);
+    const safeCategories = Array.isArray(categories)
+        ? [...categories].sort((a, b) => a.name.localeCompare(b.name))
+        : [];
+    const safeProducts = products ?? {
+        data: [],
+        current_page: 1,
+        last_page: 1,
+        per_page: 12,
+        total: 0,
+    };
+
+    const [favorites, setFavorites] = useState<number[]>(favoriteProductIds);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [sortBy, setSortBy] = useState('recommended');
+    const deriveSort = (value: unknown) =>
+        typeof value === 'string' && value.trim().length > 0 ? value : 'recommended';
+    const [sortBy, setSortBy] = useState(deriveSort(normalizedFilters.sort));
     const [currentImageIndex, setCurrentImageIndex] = useState<{ [key: number]: number }>({});
-    const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
-    const [selectedColor, setSelectedColor] = useState<string>(filters?.color || '');
+    const [selectedSizes, setSelectedSizes] = useState<string[]>(() => parseSizes(normalizedFilters.size));
+    const [selectedColor, setSelectedColor] = useState<string>(normalizedFilters.color || '');
+    const isFavoritesView =
+        normalizedFilters.favorites === '1' ||
+        normalizedFilters.favorites === 'true' ||
+        normalizedFilters.favorites === true;
+    const isFeaturedView =
+        normalizedFilters.featured === '1' ||
+        normalizedFilters.featured === 'true' ||
+        normalizedFilters.featured === true;
+    const isNewView =
+        normalizedFilters.new === '1' ||
+        normalizedFilters.new === 'true' ||
+        normalizedFilters.new === true;
+    const activeCategory =
+        typeof normalizedFilters.category === 'string' ? normalizedFilters.category : '';
+    const navCategories = safeCategories;
+
+    const buildCleanFilters = (overrides: Partial<MarketplacePageProps['filters']> = {}) => {
+        const merged = { ...normalizedFilters, ...overrides };
+        if (
+            merged === null ||
+            typeof merged !== 'object' ||
+            Array.isArray(merged)
+        ) {
+            return {};
+        }
+        const cleaned: Record<string, string> = {};
+        Object.entries(merged).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                cleaned[key] = value;
+            }
+        });
+        return cleaned;
+    };
+
+    const navigateWithFilters = (overrides: Partial<MarketplacePageProps['filters']> = {}) => {
+        const params = buildCleanFilters(overrides);
+        router.get('/marketplace', params, { preserveState: true, preserveScroll: true });
+    };
+
+    useEffect(() => {
+        setSelectedSizes(parseSizes(normalizedFilters.size));
+        setSelectedColor(normalizedFilters.color || '');
+        setSortBy(deriveSort(normalizedFilters.sort));
+    }, [normalizedFilters.size, normalizedFilters.color, normalizedFilters.sort]);
+
+    useEffect(() => {
+        setFavorites(Array.isArray(favoriteProductIds) ? favoriteProductIds : []);
+    }, [favoriteProductIds]);
 
     // Check if current user is the seller
     const isOwnProduct = (product: Product) => {
@@ -114,19 +189,12 @@ export default function MarketplaceIndex({
 
     // Handle search functionality
     const handleSearch = (searchTerm: string) => {
-        router.get('/marketplace', { search: searchTerm }, { preserveState: true });
+        navigateWithFilters({ search: searchTerm });
     };
 
     // Handle filter changes
-    const handleFilterChange = (filterType: string, value: string) => {
-        const newFilters = { ...filters, [filterType]: value };
-        // Remove empty filters
-        Object.keys(newFilters).forEach(key => {
-            if (newFilters[key as keyof typeof newFilters] === '' || newFilters[key as keyof typeof newFilters] === undefined) {
-                delete newFilters[key as keyof typeof newFilters];
-            }
-        });
-        router.get('/marketplace', newFilters, { preserveState: true });
+    const handleFilterChange = (filterType: keyof MarketplacePageProps['filters'], value: string) => {
+        navigateWithFilters({ [filterType]: value || undefined });
     };
 
     // Handle size filter toggle
@@ -140,23 +208,48 @@ export default function MarketplaceIndex({
         setSelectedSizes(newSizes);
         
         const sizeFilter = newSizes.length > 0 ? newSizes.join(',') : '';
-        handleFilterChange('size', sizeFilter);
+        navigateWithFilters({ size: sizeFilter || undefined });
     };
 
     // Handle color filter change
     const handleColorChange = (color: string) => {
         setSelectedColor(color);
-        handleFilterChange('color', color);
+        navigateWithFilters({ color: color || undefined });
     };
 
     // Handle favorite toggle
     const toggleFavorite = (productId: number) => {
-        setFavorites(prev => 
-            prev.includes(productId) 
-                ? prev.filter(id => id !== productId)
-                : [...prev, productId]
+        if (!auth?.user) {
+            router.get('/login');
+            return;
+        }
+
+        const isFavorited = favorites.includes(productId);
+        setFavorites(prev =>
+            isFavorited ? prev.filter(id => id !== productId) : [...prev, productId]
         );
-        // TODO: Implement backend favorite functionality
+
+        const onError = () => {
+            setFavorites(Array.isArray(favoriteProductIds) ? favoriteProductIds : []);
+        };
+
+        if (isFavorited) {
+            router.delete(`/favorites/${productId}`, {
+                preserveScroll: true,
+                preserveState: true,
+                onError,
+            });
+        } else {
+            router.post(
+                '/favorites',
+                { product_id: productId },
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    onError,
+                },
+            );
+        }
     };
 
     // Handle contact seller
@@ -170,7 +263,40 @@ export default function MarketplaceIndex({
     // Handle sort change
     const handleSortChange = (sortValue: string) => {
         setSortBy(sortValue);
-        router.get('/marketplace', { sort: sortValue }, { preserveState: true });
+        navigateWithFilters({ sort: sortValue });
+    };
+
+    const goToFavorites = () => {
+        if (!auth?.user) {
+            router.get('/login');
+            return;
+        }
+
+        if (isFavoritesView) {
+            applyQuickFilters({ favorites: undefined });
+        } else {
+            applyQuickFilters({ favorites: '1' });
+        }
+    };
+
+    const hasActiveFilters = Boolean(
+        normalizedFilters.category ||
+            normalizedFilters.condition ||
+            normalizedFilters.size ||
+            normalizedFilters.color ||
+            isFavoritesView ||
+            isFeaturedView ||
+            isNewView,
+    );
+
+    const applyQuickFilters = (overrides: Partial<MarketplacePageProps['filters']>) => {
+        navigateWithFilters({
+            category: undefined,
+            featured: undefined,
+            new: undefined,
+            favorites: undefined,
+            ...overrides,
+        });
     };
 
     // Image navigation functions
@@ -234,9 +360,19 @@ export default function MarketplaceIndex({
                             
                             {/* Right Actions */}
                             <div className="flex items-center space-x-4">
-                                <Button variant="ghost" size="sm">
-                                    <Heart className="h-5 w-5" />
-                                </Button>
+                                <button
+                                    type="button"
+                                    onClick={goToFavorites}
+                                    className={`rounded-full p-2 transition-colors ${
+                                        isFavoritesView
+                                            ? 'text-red-500 bg-white/10 hover:bg-white/20'
+                                            : 'text-gray-600 dark:text-gray-300 hover:bg-white/10'
+                                    }`}
+                                    aria-pressed={isFavoritesView}
+                                    title={isFavoritesView ? 'Show all items' : 'View favorites'}
+                                >
+                                    <Heart className={`h-5 w-5 ${isFavoritesView ? 'fill-current' : ''}`} />
+                                </button>
                                 <Button variant="ghost" size="sm">
                                     <ShoppingCart className="h-5 w-5" />
                                 </Button>
@@ -254,27 +390,75 @@ export default function MarketplaceIndex({
                 {/* Navigation */}
                 <div className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="flex items-center space-x-8 py-3">
-                            <Link href="/marketplace" className="text-sm font-medium text-gray-900 dark:text-white hover:text-green-600">
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3 text-sm font-medium text-gray-500 dark:text-gray-400">
+                            <button
+                                type="button"
+                                className={cn(
+                                    'whitespace-nowrap hover:text-green-600 transition-colors',
+                                    !isFeaturedView &&
+                                        !isNewView &&
+                                        !activeCategory &&
+                                        !isFavoritesView
+                                        ? 'text-gray-900 dark:text-white'
+                                        : undefined,
+                                )}
+                                onClick={() =>
+                                    applyQuickFilters({
+                                        category: undefined,
+                                        featured: undefined,
+                                        new: undefined,
+                                        favorites: undefined,
+                                    })
+                                }
+                            >
                                 All Items
-                            </Link>
-                            <Link href="/marketplace?featured=true" className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-green-600">
+                            </button>
+                            <button
+                                type="button"
+                                className={cn(
+                                    'whitespace-nowrap hover:text-green-600 transition-colors',
+                                    isFeaturedView ? 'text-gray-900 dark:text-white' : undefined,
+                                )}
+                                onClick={() =>
+                                    applyQuickFilters({
+                                        featured: '1',
+                                    })
+                                }
+                            >
                                 Featured
-                            </Link>
-                            <Link href="/marketplace?new=true" className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-green-600">
-                                New In
-                            </Link>
-                            <Link href="/marketplace?sale=true" className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-green-600">
-                                Sale
-                            </Link>
-                            {categories?.slice(0, 8).map((category) => (
-                                <Link 
-                                    key={category.id} 
-                                    href={`/marketplace?category=${category.id}`}
-                                    className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-green-600"
+                            </button>
+                            <button
+                                type="button"
+                                className={cn(
+                                    'whitespace-nowrap hover:text-green-600 transition-colors',
+                                    isNewView ? 'text-gray-900 dark:text-white' : undefined,
+                                )}
+                                onClick={() =>
+                                    applyQuickFilters({
+                                        new: '1',
+                                    })
+                                }
+                            >
+                                New Products
+                            </button>
+                            {navCategories.map((category) => (
+                                <button
+                                    type="button"
+                                    key={category.id}
+                                    className={cn(
+                                        'whitespace-nowrap hover:text-green-600 transition-colors',
+                                        activeCategory === category.id.toString()
+                                            ? 'text-gray-900 dark:text-white'
+                                            : undefined,
+                                    )}
+                                    onClick={() =>
+                                        applyQuickFilters({
+                                            category: category.id.toString(),
+                                        })
+                                    }
                                 >
                                     {category.name}
-                                </Link>
+                                </button>
                             ))}
                         </div>
                     </div>
@@ -302,13 +486,14 @@ export default function MarketplaceIndex({
                                             <Filter className="mr-2 h-4 w-4" />
                                             Filters
                                         </CardTitle>
-                                        {(filters?.category || filters?.condition || filters?.size || filters?.color) && (
+                                        {hasActiveFilters && (
                                             <Button 
                                                 variant="ghost" 
                                                 size="sm"
                                                 onClick={() => {
                                                     setSelectedSizes([]);
                                                     setSelectedColor('');
+                                                    setFavorites(Array.isArray(favoriteProductIds) ? favoriteProductIds : []);
                                                     router.get('/marketplace');
                                                 }}
                                                 className="text-xs text-red-600 hover:text-red-700"
@@ -324,14 +509,18 @@ export default function MarketplaceIndex({
                                         <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Category</h3>
                                         <RadioGroup 
                                             value={filters?.category || ''} 
-                                            onValueChange={(value) => handleFilterChange('category', value)}
+                                            onValueChange={(value) =>
+                                                applyQuickFilters({
+                                                    category: value || undefined,
+                                                })
+                                            }
                                         >
                                             <div className="space-y-2">
                                                 <div className="flex items-center space-x-2">
                                                     <RadioGroupItem value="" id="all-categories" />
                                                     <Label htmlFor="all-categories" className="text-sm">All Categories</Label>
                                                 </div>
-                                                {categories?.map((category) => (
+                                                {safeCategories.map((category) => (
                                                     <div key={category.id} className="flex items-center space-x-2">
                                                         <RadioGroupItem value={category.id.toString()} id={`category-${category.id}`} />
                                                         <Label htmlFor={`category-${category.id}`} className="text-sm">{category.name}</Label>
@@ -370,7 +559,7 @@ export default function MarketplaceIndex({
                                                     <RadioGroupItem value="" id="all-colors" />
                                                     <Label htmlFor="all-colors" className="text-sm cursor-pointer">All Colors</Label>
                                                 </div>
-                                                {['Black', 'White', 'Blue', 'Red', 'Green', 'Yellow', 'Pink', 'Gray'].map((color) => (
+                                                {['Black', 'White', 'Blue', 'Red', 'Green', 'Yellow', 'Pink', 'Gray', 'Denim'].map((color) => (
                                                     <div key={color} className="flex items-center space-x-2">
                                                         <RadioGroupItem value={color.toLowerCase()} id={`color-${color}`} />
                                                         <Label htmlFor={`color-${color}`} className="text-sm cursor-pointer">{color}</Label>
@@ -413,7 +602,7 @@ export default function MarketplaceIndex({
                             <div className="flex items-center justify-between mb-6">
                                 <div className="flex items-center space-x-4">
                                     <span className="text-sm text-gray-500 dark:text-gray-400">
-                                        {products?.total || 0} items found
+                                        {safeProducts.total ?? safeProducts.data.length ?? 0} items found
                                     </span>
                                 </div>
                                 <div className="flex items-center space-x-4">
@@ -451,7 +640,7 @@ export default function MarketplaceIndex({
                             </div>
 
                             {/* Products Grid */}
-                            {!products || !products.data || products.data.length === 0 ? (
+                            {!Array.isArray(safeProducts.data) || safeProducts.data.length === 0 ? (
                                 <Card className="border-gray-200 dark:border-gray-700">
                                     <CardContent className="p-12 text-center">
                                         <ShoppingBag className="mx-auto h-12 w-12 text-gray-400 mb-4" />
@@ -471,7 +660,7 @@ export default function MarketplaceIndex({
                                 </Card>
                             ) : (
                                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                    {products.data
+                                    {safeProducts.data
                                         .filter(product => !isOwnProduct(product))
                                         .map((product) => (
                                             <Card 
@@ -611,7 +800,12 @@ export default function MarketplaceIndex({
                                                                                 e.stopPropagation();
                                                                                 toggleFavorite(product.id);
                                                                             }}
-                                                                            title="Add to favorites"
+                                                                            title={
+                                                                                favorites.includes(product.id)
+                                                                                    ? 'Remove from favorites'
+                                                                                    : 'Add to favorites'
+                                                                            }
+                                                                            aria-pressed={favorites.includes(product.id)}
                                                                         >
                                                                             <Heart className={`h-4 w-4 ${favorites.includes(product.id) ? 'fill-current' : ''}`} />
                                                                         </Button>

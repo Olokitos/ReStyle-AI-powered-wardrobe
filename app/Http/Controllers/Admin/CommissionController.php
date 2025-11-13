@@ -69,7 +69,7 @@ class CommissionController extends Controller
      */
     public function report(Request $request)
     {
-        $query = CommissionRecord::with(['transaction.product', 'seller']);
+        $query = CommissionRecord::with(['transaction.product', 'transaction.buyer', 'seller']);
         
         // Date range filter
         if ($request->filled('start_date')) {
@@ -121,7 +121,7 @@ class CommissionController extends Controller
      */
     public function export(Request $request)
     {
-        $query = CommissionRecord::with(['transaction.product', 'seller']);
+        $query = CommissionRecord::with(['transaction.product', 'transaction.buyer', 'seller']);
         
         // Apply same filters as report
         if ($request->filled('start_date')) {

@@ -13,7 +13,9 @@ import {
     Key,
     CheckCircle,
     XCircle,
-    AlertTriangle
+    AlertTriangle,
+    CreditCard,
+    Building
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -45,6 +47,10 @@ interface User {
     email_verified_at: string | null;
     created_at: string;
     updated_at: string;
+    gcash_number?: string | null;
+    bank_name?: string | null;
+    bank_account_number?: string | null;
+    bank_account_name?: string | null;
 }
 
 interface UserShowProps {
@@ -220,6 +226,55 @@ export default function UserShow({ user }: UserShowProps) {
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Payment Information - Admin Only View */}
+                <Card className="border-gray-200 dark:border-gray-700">
+                    <CardHeader>
+                        <CardTitle className="flex items-center space-x-2">
+                            <CreditCard className="h-5 w-5" />
+                            <span>Payment Information</span>
+                        </CardTitle>
+                        <CardDescription>
+                            User's payment details for payouts. This information is only visible to administrators.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div>
+                            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                GCash Number
+                            </Label>
+                            <p className="text-gray-900 dark:text-white font-mono">
+                                {user.gcash_number || <span className="text-gray-400 italic">Not provided</span>}
+                            </p>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div>
+                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Bank Name
+                                </Label>
+                                <p className="text-gray-900 dark:text-white">
+                                    {user.bank_name || <span className="text-gray-400 italic">Not provided</span>}
+                                </p>
+                            </div>
+                            <div>
+                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Account Number
+                                </Label>
+                                <p className="text-gray-900 dark:text-white font-mono">
+                                    {user.bank_account_number || <span className="text-gray-400 italic">Not provided</span>}
+                                </p>
+                            </div>
+                        </div>
+                        <div>
+                            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Account Name
+                            </Label>
+                            <p className="text-gray-900 dark:text-white">
+                                {user.bank_account_name || <span className="text-gray-400 italic">Not provided</span>}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
 
                 {/* Password Reset */}
                 <Card className="border-gray-200 dark:border-gray-700">

@@ -182,9 +182,9 @@ export default function SubmitPayment({ transaction }: SubmitPaymentProps) {
                         </div>
                         
                         <div>
-                          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Bank Transfer (BPI)</p>
+                          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Bank Transfer (RCBC)</p>
                           <div className="bg-white dark:bg-gray-700 p-3 rounded border">
-                            <p className="font-mono text-lg font-bold text-blue-600">1234567890</p>
+                            <p className="font-mono text-lg font-bold text-blue-600">53543 9962 4782 4240</p>
                             <p className="text-sm text-gray-600 dark:text-gray-400">Restyle Platform</p>
                           </div>
                         </div>
@@ -231,12 +231,12 @@ export default function SubmitPayment({ transaction }: SubmitPaymentProps) {
                       type="text"
                       value={data.platform_payment_reference}
                       onChange={(e) => setData('platform_payment_reference', e.target.value)}
-                      placeholder="Enter payment reference from GCash/Bank transfer"
+                      placeholder="Enter payment reference from GCash/RCBC transfer"
                       className="mt-1"
                       required
                     />
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      Enter the reference number from your GCash or bank transfer to Restyle Platform
+                      Enter the reference number from your GCash or RCBC bank transfer to Restyle Platform
                     </p>
                     {errors.platform_payment_reference && (
                       <p className="text-red-600 text-sm mt-1">{errors.platform_payment_reference}</p>
