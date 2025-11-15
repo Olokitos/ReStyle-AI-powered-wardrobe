@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 import { edit } from '@/routes/settings/profile';
@@ -301,6 +302,33 @@ export default function Profile({
                                                     />
                                                 </div>
                                                 <InputError message={errors.email} />
+                                            </div>
+                                        </div>
+
+                                        {/* Body Type Field - Display Only */}
+                                        <div className="space-y-2">
+                                            <Label htmlFor="body_type" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                Body Type
+                                            </Label>
+                                            <Select 
+                                                defaultValue={auth.user.body_type || 'not_specified'} 
+                                                name="body_type"
+                                                disabled
+                                            >
+                                                <SelectTrigger className="h-11 border-gray-300 dark:border-gray-600 focus:border-green-500 focus:ring-green-500">
+                                                    <SelectValue placeholder="Select your body type" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="not_specified">Not specified</SelectItem>
+                                                    <SelectItem value="apple">Apple</SelectItem>
+                                                    <SelectItem value="pear">Pear</SelectItem>
+                                                    <SelectItem value="hourglass">Hourglass</SelectItem>
+                                                    <SelectItem value="rectangle">Rectangle</SelectItem>
+                                                    <SelectItem value="inverted_triangle">Inverted Triangle</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                This feature helps personalize your outfit recommendations
                                             </div>
                                         </div>
 
